@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2b1a5e">
+  <title>Play · QuizBlitz</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+    main { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+    [data-screen] { flex: 1; }
+    main .center { min-height: 0; }
+    #s-answer:not(.hidden) { display: flex; }
+    .game { flex: 1; display: flex; flex-direction: column; padding: 12px; gap: 12px; }
+    .q-small { background: var(--surface); color: var(--text); border-radius: 10px; padding: 12px; font-weight: 800; text-align: center; margin: 0; font-size: 18px; }
+    .footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: var(--surface); color: var(--text); font-weight: 800; }
+    .footer .score { background: var(--text); color: #fff; padding: 4px 12px; border-radius: 6px; }
+    .offline { background: var(--bad); color: #fff; text-align: center; font-weight: 700; padding: 6px; }
+    .footer { padding: 6px 16px; }
+    #f-medal { position: relative; display: inline-block; }
+    #f-medal .medal { position: absolute; right: -14px; bottom: -6px; font-size: 52px; }
+    .picker { display: flex; flex-direction: column; gap: 12px; padding: 16px; max-width: 520px; margin: 0 auto; width: 100%; }
+    .picker-preview { display: grid; place-items: center; padding: 12px 0 4px; }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: rgba(0,0,0,.25); padding: 4px; border-radius: 12px; }
+    .tabs button { box-shadow: none; background: transparent; color: var(--on-bg-muted); padding: 10px; }
+    .tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); }
+    .picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 10px; }
+    .picker-grid button { background: rgba(255,255,255,.1); box-shadow: none; padding: 8px; border: 3px solid transparent; }
+    .picker-grid button[aria-selected="true"] { border-color: var(--a2); background: rgba(255,255,255,.22); }
+    .picker-grid .acc-none { font-size: 13px; color: var(--on-bg-muted); width: 48px; height: 48px; display: grid; place-items: center; }
+    .spinner { width: 48px; height: 48px; border-radius: 50%; border: 6px solid rgba(255,255,255,.25); border-top-color: #fff; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+  </style>
+</head>
+<body>
+  <div class="offline hidden" id="offline" role="status">Reconnecting…</div>
+  <div class="topbar hidden" id="topbar"><span>PIN: <span id="t-pin"></span></span><span id="t-progress"></span></div>
+  <main>
+    <!-- PIN -->
+    <section id="s-pin" data-screen class="center">
+      <div class="stack" style="align-items:center;width:100%">
+        <h1 class="logo">Quiz<span>Blitz</span></h1>
+        <form class="card stack" id="pin-form" autocomplete="off">
+          <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Game PIN" aria-label="Game PIN" required>
+          <button class="accent" type="submit">Enter</button>
+          <p class="error" id="pin-err" role="alert"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Nickname -->
+    <section id="s-name" data-screen class="center hidden">
+      <div class="stack" style="align-items:center;width:100%">
+        <h1 class="logo">Quiz<span>Blitz</span></h1>
+        <form class="card stack" id="name-form" autocomplete="off">
+          <input id="name" maxlength="15" placeholder="Nickname" aria-label="Nickname" required autocapitalize="words">
+          <button class="accent" type="submit">OK, go!</button>
+          <p class="error" id="name-err" role="alert"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Lobby -->
+    <section id="s-lobby" data-screen class="center hidden">
+      <div class="stack" style="align-items:center">
+        <div id="lobby-avatar" class="pop"></div>
+        <p class="big">You're in!</p>
+        <p class="muted">See your nickname on screen?</p>
+        <button class="accent" id="btn-edit-avatar" type="button">Change avatar</button>
+      </div>
+    </section>
+
+    <!-- Avatar picker -->
+    <section id="s-avatar" data-screen class="hidden">
+      <div class="picker">
+        <div class="picker-preview" id="pick-preview"></div>
+        <div class="tabs" role="tablist">
+          <button role="tab" type="button" id="tab-char" aria-selected="true">Character</button>
+          <button role="tab" type="button" id="tab-acc" aria-selected="false">Accessory</button>
+        </div>
+        <div class="picker-grid" id="pick-grid" role="listbox" aria-label="Choose"></div>
+        <button class="accent" id="btn-avatar-done" type="button">Done</button>
+        <p class="error" id="avatar-err" role="alert" style="color:#ffb4b4"></p>
+      </div>
+    </section>
+
+    <!-- Get ready -->
+    <section id="s-ready" data-screen class="center hidden">
+      <div class="stack" style="align-items:center">
+        <p class="muted" id="ready-num"></p>
+        <p class="big">Get ready!</p>
+        <div class="timer"><span id="ready-count"></span></div>
+      </div>
+    </section>
+
+    <!-- Answer -->
+    <section id="s-answer" data-screen class="hidden">
+      <div class="game">
+        <div class="row" style="justify-content:space-between">
+          <span class="pill" id="a-num"></span>
+          <span class="pill" id="a-time"></span>
+        </div>
+        <p class="q-small" id="a-text"></p>
+        <div class="answers player" id="a-buttons"></div>
+      </div>
+    </section>
+
+    <!-- Answer sent -->
+    <section id="s-sent" data-screen class="center hidden">
+      <div class="stack" style="align-items:center">
+        <div class="spinner" aria-hidden="true"></div>
+        <p class="big">Answer sent</p>
+        <p class="muted">Were you fast enough?</p>
+      </div>
+    </section>
+
+    <!-- Result -->
+    <section id="s-result" data-screen class="center hidden">
+      <div class="stack pop" style="align-items:center">
+        <p class="huge" id="r-icon"></p>
+        <p class="big" id="r-title"></p>
+        <p class="muted" id="r-streak" style="color:#fff;font-weight:800"></p>
+        <div class="points-pill" id="r-points"></div>
+        <p id="r-rank" style="font-weight:800"></p>
+      </div>
+    </section>
+
+    <!-- Waiting between questions -->
+    <section id="s-wait" data-screen class="center hidden">
+      <div class="stack" style="align-items:center">
+        <p class="big" id="w-rank"></p>
+        <p class="muted" id="w-msg">Look up at the main screen</p>
+        <div class="spinner" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <!-- Final -->
+    <section id="s-final" data-screen class="center hidden">
+      <div class="stack pop" style="align-items:center">
+        <p class="huge" id="f-medal"></p>
+        <p class="big" id="f-rank"></p>
+        <p class="points-pill" id="f-score"></p>
+        <a class="btn accent" href="/">Play again</a>
+      </div>
+    </section>
+
+    <!-- Kicked / errors -->
+    <section id="s-msg" data-screen class="center hidden">
+      <div class="stack" style="align-items:center">
+        <p class="big" id="m-text"></p>
+        <a class="btn accent" href="/">Back</a>
+      </div>
+    </section>
+  </main>
+  <div class="footer hidden" id="footer"><span class="row" style="gap:8px"><span id="f-avatar"></span><span id="f-name"></span></span><span class="score" id="f-total">0</span></div>
+  <script type="module" src="/play.js"></script>
+</body>
+</html>

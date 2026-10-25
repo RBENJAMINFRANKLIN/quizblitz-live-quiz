@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>QuizBlitz</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="center">
+    <div class="stack" style="align-items:center">
+      <h1 class="logo">Quiz<span>Blitz</span></h1>
+      <form class="card stack" id="pin-form" autocomplete="off">
+        <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Game PIN" aria-label="Game PIN" required>
+        <button class="accent" type="submit">Enter</button>
+        <p class="error" id="err" role="alert"></p>
+      </form>
+      <p class="muted">Hosting a game? <a class="link" href="/host">Create a quiz</a></p>
+    </div>
+  </main>
+  <script type="module">
+    import { api } from '/shared.js';
+    const form = document.getElementById('pin-form');
+    const pinInput = document.getElementById('pin');
+    const err = document.getElementById('err');
+    pinInput.addEventListener('input', () => { pinInput.value = pinInput.value.replace(/\D/g, ''); });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      const pin = pinInput.value.trim();
+      try {
+        await api(`/api/games/${encodeURIComponent(pin)}`);
+        location.href = `/play?pin=${encodeURIComponent(pin)}`;
+      } catch (ex) {
+        err.textContent = ex.message;
+      }
+    });
+  </script>
+</body>
+</html>

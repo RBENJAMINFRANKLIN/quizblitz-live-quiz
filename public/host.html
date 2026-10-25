@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Host · QuizBlitz</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    .editor .card { width: 100%; }
+    .q-card { display: grid; gap: 10px; }
+    .q-card .row > input { text-align: left; }
+    .choice-row { display: flex; gap: 8px; align-items: center; }
+    .choice-row .swatch { width: 40px; height: 48px; border-radius: 8px; display: grid; place-items: center; color: #fff; flex: none; }
+    .choice-row .swatch svg { width: 22px; height: 22px; fill: currentColor; }
+    .choice-row input[type=text] { text-align: left; font-size: 16px; }
+    .choice-row label { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; white-space: nowrap; color: var(--text-muted); }
+    .choice-row input[type=checkbox] { width: 22px; height: 22px; }
+    .q-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--text-muted); font-weight: 800; }
+    .q-head select { width: auto; padding: 6px 8px; font-size: 14px; }
+
+    .lobby { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
+    .join-box { background: var(--surface); color: var(--text); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); }
+    .join-box .pin { font-size: clamp(48px, 9vw, 96px); font-weight: 900; letter-spacing: 4px; line-height: 1; margin: 6px 0 0; }
+    .join-url { font-weight: 800; word-break: break-all; }
+    #qr { background: #fff; padding: 12px; border-radius: var(--radius); box-shadow: var(--shadow); width: 240px; height: 240px; display: grid; place-items: center; }
+    #qr img, #qr canvas { width: 216px !important; height: 216px !important; }
+    .players { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 24px; }
+    .chip { background: rgba(255,255,255,0.15); padding: 10px 16px; border-radius: 10px; font-weight: 800; font-size: 18px; display: inline-flex; gap: 8px; align-items: center; }
+    .chip button { padding: 2px 8px; font-size: 13px; box-shadow: none; background: rgba(0,0,0,0.35); }
+    .chip.off { opacity: 0.5; }
+
+    .chip .avatar { margin: -4px 0; }
+
+    /* ---------- full-screen game layout (question / reveal) ---------- */
+    .game-screen { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding: 16px 16px 0; gap: 14px; }
+    .game-screen > .answers { flex: none; }
+    .time-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.15); overflow: hidden; flex: none; }
+    .time-bar > div { height: 100%; background: var(--a2); width: 100%; transform-origin: left; }
+    .question-text { background: var(--surface); color: var(--text); border-radius: var(--radius); padding: 18px 24px; font-size: clamp(22px, 3.4vw, 42px); font-weight: 900; text-align: center; box-shadow: var(--shadow); margin: 0; flex: none; }
+    .qmid { flex: 1; min-height: 0; display: grid; grid-template-columns: 140px 1fr 140px; align-items: center; gap: 16px; }
+    .media { height: 100%; min-height: 0; display: grid; place-items: center; }
+    .media img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius); box-shadow: var(--shadow); background: rgba(255,255,255,.08); }
+    .media .shapes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: min(240px, 100%); }
+    .media .shapes span { aspect-ratio: 1; border-radius: 18px; display: grid; place-items: center; color: #fff; box-shadow: var(--shadow); animation: bob 2.4s ease-in-out infinite; }
+    .media .shapes span:nth-child(2) { animation-delay: .3s; } .media .shapes span:nth-child(3) { animation-delay: .6s; } .media .shapes span:nth-child(4) { animation-delay: .9s; }
+    .media .shapes svg { width: 50%; height: 50%; fill: currentColor; }
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .count-box { text-align: center; font-weight: 900; background: rgba(0,0,0,.25); border-radius: var(--radius); padding: 14px 8px; }
+    .count-box .n { font-size: 56px; display: block; line-height: 1.1; }
+    .timer.xl { width: 130px; height: 130px; font-size: 52px; }
+    .answers.host .tile { min-height: clamp(70px, 12vh, 120px); font-size: clamp(18px, 2.4vw, 30px); }
+    .answers.host .tile svg { width: 44px; height: 44px; }
+    .bottombar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 -16px; padding: 10px 20px; background: var(--surface); color: var(--text); font-weight: 900; flex: none; }
+    .bottombar .pin-tag { background: var(--text); color: #fff; border-radius: 6px; padding: 4px 10px; }
+    .bars { display: flex; gap: 18px; align-items: flex-end; justify-content: center; height: 100%; max-height: 260px; }
+    .bar { width: 72px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; font-weight: 900; height: 100%; }
+    .bar .fill { width: 100%; border-radius: 6px 6px 0 0; min-height: 6px; transition: height .5s; }
+    .bar .label { display: flex; align-items: center; gap: 4px; }
+    .bar .label svg { width: 20px; height: 20px; fill: currentColor; }
+
+    .board { list-style: none; padding: 0; margin: 20px auto; max-width: 760px; display: grid; gap: 10px; }
+    .board li { background: var(--surface); color: var(--text); border-radius: 10px; padding: 10px 20px; display: flex; align-items: center; gap: 14px; font-weight: 900; font-size: 22px; box-shadow: var(--shadow); animation: slide-in .4s ease-out both; }
+    .board li .name { flex: 1; word-break: break-word; }
+    .board li:first-child { background: var(--a2); color: var(--a2-ink); }
+    @keyframes slide-in { from { transform: translateX(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+    /* ---------- podium ---------- */
+    .end-screen { position: relative; overflow: hidden; min-height: 100vh; min-height: 100dvh; padding: 16px; text-align: center; }
+    .podium { display: flex; gap: 16px; justify-content: center; align-items: flex-end; height: 470px; margin: 10px 0 0; position: relative; z-index: 1; }
+    .podium .slot { width: min(28vw, 230px); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+    .podium .who { display: flex; flex-direction: column; align-items: center; gap: 6px; font-weight: 900; font-size: 22px; margin-bottom: 10px; word-break: break-word;
+      opacity: 0; transform: scale(.3) translateY(40px); transition: opacity .45s, transform .45s cubic-bezier(.34,1.56,.64,1); }
+    .podium .who .score { font-size: 16px; opacity: .85; }
+    .podium .step { width: 100%; height: 0; background: var(--surface); color: var(--text); border-radius: 10px 10px 0 0; display: flex; justify-content: center; padding-top: 12px; font-size: 54px; box-shadow: var(--shadow); overflow: hidden; transition: height .6s cubic-bezier(.34,1.56,.64,1); }
+    .podium .slot.up .step { height: var(--h); }
+    .podium .slot.pop .who { opacity: 1; transform: none; }
+    .podium .p1 { --h: 260px; } .podium .p1 .step { background: var(--a2); color: var(--a2-ink); }
+    .podium .p2 { --h: 190px; } .podium .p3 { --h: 140px; }
+    .drumroll { font-size: clamp(24px, 4vw, 40px); font-weight: 900; height: 1.4em; margin: 6px 0; opacity: 0; transition: opacity .4s; }
+    .drumroll.on { opacity: 1; }
+    .spotlight { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 30% 70% at 50% 75%, rgba(255,255,200,.28), transparent 70%); opacity: 0; transition: opacity .6s; }
+    .spotlight.on { opacity: 1; }
+    .confetti { position: absolute; top: -20px; width: 10px; height: 16px; border-radius: 2px; pointer-events: none; z-index: 2; animation: fall linear forwards; }
+    @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+    .runners { opacity: 0; transition: opacity .6s; }
+    .runners.on { opacity: 1; }
+    @media (prefers-reduced-motion: reduce) {
+      .podium .step, .podium .who { transition: none; }
+      .confetti, .media .shapes span, .board li { animation: none; display: revert; }
+      .confetti { display: none; }
+    }
+
+    @media (max-width: 760px) {
+      .lobby { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+      .qmid { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+      .qmid .media { display: none; }
+      .podium { height: 380px; } .podium .p1 { --h: 200px; } .podium .p2 { --h: 140px; } .podium .p3 { --h: 100px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 1. Quiz editor -->
+  <section id="s-edit" data-screen class="wrap editor">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <h1 class="logo" style="margin:0;font-size:36px">Quiz<span>Blitz</span></h1>
+      <div class="row">
+        <button class="ghost small" id="btn-sample" type="button">Load sample quiz</button>
+        <button class="ghost small" id="btn-import" type="button">Import JSON</button>
+        <button class="ghost small" id="btn-export" type="button">Export JSON</button>
+      </div>
+    </div>
+    <div class="card stack" style="margin-bottom:12px">
+      <input id="quiz-title" placeholder="Quiz title" aria-label="Quiz title" style="text-align:left">
+    </div>
+    <div id="questions" class="stack"></div>
+    <div class="row" style="margin:16px 0 40px">
+      <button class="ghost" id="btn-add" type="button">+ Add question</button>
+      <span class="grow"></span>
+      <p class="error" id="edit-err" role="alert" style="color:#ffb4b4"></p>
+      <button class="accent" id="btn-host" type="button">Host live game ▶</button>
+    </div>
+    <input type="file" id="import-file" accept="application/json" class="hidden">
+  </section>
+
+  <!-- 2. Lobby -->
+  <section id="s-lobby" data-screen class="wrap hidden">
+    <div class="lobby" style="margin-top:20px">
+      <div class="join-box stack">
+        <div>Join at <span class="join-url" id="join-url"></span></div>
+        <div>or scan the QR code with your phone camera</div>
+        <div>Game PIN:</div>
+        <p class="pin" id="lobby-pin"></p>
+        <select id="url-choice" class="hidden" aria-label="Network address to share" style="text-align:left;font-size:14px"></select>
+      </div>
+      <div id="qr" aria-label="QR code to join the game"></div>
+    </div>
+    <div class="row" style="justify-content:space-between;margin-top:24px">
+      <div class="pill">👤 <span id="player-count">0</span></div>
+      <h2 style="margin:0" id="lobby-title"></h2>
+      <button class="accent" id="btn-start" disabled>Start</button>
+    </div>
+    <p class="muted" id="lobby-hint" style="text-align:center">Waiting for players…</p>
+    <div class="players" id="players"></div>
+  </section>
+
+  <!-- 3. Get ready -->
+  <section id="s-ready" data-screen class="center hidden">
+    <div class="stack" style="align-items:center">
+      <p class="muted big" id="ready-num"></p>
+      <h2 class="question-text pop" id="ready-text"></h2>
+      <div class="timer" id="ready-timer"><span></span></div>
+    </div>
+  </section>
+
+  <!-- 4. Question open -->
+  <section id="s-question" data-screen class="game-screen hidden">
+    <div class="time-bar" aria-hidden="true"><div id="q-bar"></div></div>
+    <h2 class="question-text" id="q-text"></h2>
+    <div class="qmid">
+      <div class="timer xl" id="q-timer" role="timer" aria-label="Seconds left"><span></span></div>
+      <div class="media" id="q-media"></div>
+      <div class="count-box"><span class="n" id="q-answers">0</span>Answers</div>
+    </div>
+    <div class="answers host" id="q-choices"></div>
+    <div class="bottombar">
+      <span id="q-num"></span>
+      <span>Game PIN: <span class="pin-tag" id="q-pin"></span></span>
+      <button class="small" id="btn-skip">Skip ⏭</button>
+    </div>
+  </section>
+
+  <!-- 5. Reveal -->
+  <section id="s-reveal" data-screen class="game-screen hidden">
+    <h2 class="question-text" id="r-text"></h2>
+    <div class="qmid">
+      <div></div>
+      <div class="bars" id="r-bars"></div>
+      <div class="count-box"><span class="n" id="r-answers">0</span>Answers</div>
+    </div>
+    <div class="answers host" id="r-choices"></div>
+    <div class="bottombar">
+      <span id="r-num"></span>
+      <span>Game PIN: <span class="pin-tag" id="r-pin"></span></span>
+      <button class="accent small" id="btn-to-board">Next ▶</button>
+    </div>
+  </section>
+
+  <!-- 6. Scoreboard -->
+  <section id="s-board" data-screen class="wrap hidden">
+    <div class="row" style="justify-content:space-between">
+      <h2 class="big">Scoreboard</h2>
+      <button class="accent" id="btn-next-q">Next ▶</button>
+    </div>
+    <ol class="board" id="board"></ol>
+  </section>
+
+  <!-- 7. Podium -->
+  <section id="s-end" data-screen class="end-screen hidden">
+    <div class="spotlight" id="spotlight"></div>
+    <h2 class="big" id="end-title"></h2>
+    <p class="drumroll" id="drumroll"></p>
+    <div class="podium" id="podium"></div>
+    <div class="runners" id="runners">
+      <ol class="board" id="end-board"></ol>
+      <div class="row" style="justify-content:center;margin:20px 0 40px">
+        <button class="ghost" id="btn-replay" type="button">↻ Replay podium</button>
+        <a class="btn ghost" href="/host">Back to editor</a>
+      </div>
+    </div>
+  </section>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script type="module" src="/host.js"></script>
+</body>
+</html>
