@@ -5,6 +5,29 @@ on their phones by **scanning a QR code or typing a 6-digit game PIN**.
 
 No dependencies: just Node.js 18 or newer.
 
+## Demo
+
+**[▶ Watch an 80-second game (MP4)](docs/media/quizblitz-demo.mp4)**: a real 3-player game recorded from the app
+running locally. The host screen is on the left and one player's phone is on the right.
+
+[![Host lobby with game PIN, QR code and three players](docs/media/02-host-lobby.png)](docs/media/quizblitz-demo.mp4)
+
+**Host screen (big screen or projector)**
+
+| Quiz editor | Question with live timer |
+|---|---|
+| ![Quiz editor with the sample quiz](docs/media/01-host-editor.png) | ![Question screen with timer and answer count](docs/media/08-host-question.png) |
+| **Answer reveal** | **Animated podium** |
+| ![Answer distribution with the correct answer highlighted](docs/media/12-host-reveal.png) | ![Podium with avatars, scores and confetti](docs/media/18-host-podium.png) |
+
+The scoreboard after each question is in [docs/media/15-host-scoreboard.png](docs/media/15-host-scoreboard.png).
+
+**Player phone**
+
+| Join | Pick an avatar | Answer | Correct | Wrong | Final place |
+|---|---|---|---|---|---|
+| ![Nickname entry](docs/media/04-phone-nickname.png) | ![Avatar picker](docs/media/05-phone-avatar.png) | ![2x2 answer buttons](docs/media/09-phone-answer.png) | ![Correct answer with points and rank](docs/media/13-phone-correct.png) | ![Wrong answer screen](docs/media/14-phone-wrong.png) | ![Final rank and score](docs/media/19-phone-final.png) |
+
 ## Run it
 
 ```bash
