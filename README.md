@@ -93,5 +93,3 @@ as JSON:
   "questions": [ { "text": "2 + 2 = ?", "choices": ["3", "4"], "correct": [1], "time": 20 } ] }
 ```
 
-Games are kept in memory, so restarting the server ends them. QR code rendering
-loads `qrcodejs` from cdnjs. Without internet the PIN and address still work.
