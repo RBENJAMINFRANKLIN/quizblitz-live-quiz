@@ -3,7 +3,7 @@
 A live, multiplayer quiz game. The host shows questions on a big screen; players join
 on their phones by **scanning a QR code or typing a 6-digit game PIN**.
 
-No dependencies: just Node.js 18 or newer.
+No npm dependencies: just **Node.js 22.13 or newer** (it uses Node's built-in SQLite for game history).
 
 ## Demo
 
@@ -28,10 +28,16 @@ The scoreboard after each question is in [docs/media/15-host-scoreboard.png](doc
 |---|---|---|---|---|---|
 | ![Nickname entry](docs/media/04-phone-nickname.png) | ![Avatar picker](docs/media/05-phone-avatar.png) | ![2x2 answer buttons](docs/media/09-phone-answer.png) | ![Correct answer with points and rank](docs/media/13-phone-correct.png) | ![Wrong answer screen](docs/media/14-phone-wrong.png) | ![Final rank and score](docs/media/19-phone-final.png) |
 
+**Game reports (history)**
+
+| Summary | Players | Questions |
+|---|---|---|
+| ![Report summary: accuracy, podium, difficult questions, players who need help](docs/media/21-report-summary.png) | ![Per-player results with each answer](docs/media/22-report-players.png) | ![Per-question answer split, % correct and average time](docs/media/23-report-questions.png) |
+
 ## Run it
 
 ```bash
-node server.js
+npm start            # or: node server.js
 ```
 
 Then on the computer that will be the big screen, open **http://localhost:3000/host**.
@@ -70,6 +76,19 @@ show it again.
 **Question images:** each question can have an optional image link, which is shown
 in the middle of the host screen.
 
+**Reports (game history):** every game that reaches the podium (or is ended early with
+**End**) is saved. Open **📊 Reports** in the editor, or **View report** on the podium screen:
+
+- **Summary:** % correct answers, players, average score, the podium, **difficult questions**
+  (fewer than 35% correct), players who **need help** (fewer than 35% correct) and players
+  who **didn't finish**.
+- **Players:** rank, score, correct/unanswered, and each player's answer, points and time per question.
+- **Questions:** answer split per option, % correct and average answer time.
+- **Download CSV** (opens in Excel or Google Sheets) and **Delete**.
+
+Reports are private to the host: they open only on the computer running QuizBlitz, not on
+players' phones. When hosting online, set `REPORTS_KEY` and open `/reports?key=YOUR_KEY`.
+
 Players who refresh or whose phone sleeps rejoin automatically. The host can remove a
 player by clicking ✕ on their name in the lobby.
 
@@ -77,6 +96,9 @@ player by clicking ✕ on their name in the lobby.
 
 ```
 server.js          game server: state machine, timers, scoring, REST + SSE
+db.js              game history in SQLite (Node's built-in node:sqlite)
+public/reports.*   reports page (summary, players, questions, CSV)
+data/quizblitz.db  the database file, created on first run (not committed)
 public/index.html  landing page (enter PIN)
 public/host.*      quiz editor, lobby (PIN + QR), host game screens
 public/play.*      player phone screens
@@ -85,11 +107,21 @@ public/style.css   shared styles
 EVIDENCE.md        how this design was derived from analyzing Kahoot's player app
 ```
 
-Quizzes are saved in the host browser's local storage, and can be exported or imported
-as JSON:
+**Where data lives**
+
+- **Live games** are kept in memory while they run; restarting the server ends a game in progress.
+- **Finished games** are saved to `data/quizblitz.db` (SQLite: a single file, nothing to install).
+  Back it up by copying the file; delete it to clear all history. Change the location with
+  `QUIZBLITZ_DB=/path/to/file.db`.
+- **Quizzes** are saved in the host browser's local storage, and can be exported or imported
+  as JSON:
 
 ```json
 { "title": "My quiz",
   "questions": [ { "text": "2 + 2 = ?", "choices": ["3", "4"], "correct": [1], "time": 20 } ] }
 ```
 
+## Tests
+
+With the server running (`npm start`), run `npm test`. It plays a full 3-player game through the
+API and checks scoring, streaks, rejoining, and the saved report (stats, CSV, privacy, delete).

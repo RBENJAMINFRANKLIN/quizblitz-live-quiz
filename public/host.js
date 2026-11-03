@@ -364,6 +364,9 @@ function onMessage(msg) {
     case 'ENDED': {
       document.getElementById('end-title').textContent = msg.title;
       lastLeaderboard = msg.leaderboard;
+      const reportLink = document.getElementById('btn-report');
+      reportLink.classList.toggle('hidden', !msg.reportId);
+      if (msg.reportId) reportLink.href = `/reports?id=${msg.reportId}`;
       document.getElementById('end-board').replaceChildren(...lastLeaderboard.slice(3).map((p, i) => boardRow(p, i * 90)));
       try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
       show('s-end');

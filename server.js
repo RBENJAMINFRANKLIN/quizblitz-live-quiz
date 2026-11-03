@@ -1,18 +1,23 @@
-// QuizBlitz — live quiz server (zero dependencies, Node 18+).
+// QuizBlitz — live quiz server (zero dependencies, Node 22.13+ for built-in SQLite).
 // The server is authoritative: it owns the game state machine, the timer,
 // answer validation and scoring. Browsers only render what it pushes.
 //   Host  -> server : REST  (POST /api/games, POST /api/games/:pin/host-action)
 //   Player-> server : REST  (POST /api/games/:pin/join, POST /api/games/:pin/answer)
 //   Server-> both   : Server-Sent Events streams (one per host, one per player)
+// Finished games are saved to SQLite (db.js) and shown on /reports.
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const store = require('./db');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const db = store.open(process.env.QUIZBLITZ_DB || path.join(__dirname, 'data', 'quizblitz.db'));
+// Reports are private to the host: allowed from this computer, or with REPORTS_KEY when hosted.
+const REPORTS_KEY = process.env.REPORTS_KEY || '';
 
 const GET_READY_MS = 4000;      // countdown before each question opens
 const ANSWER_GRACE_MS = 400;    // accept answers that were in flight at time-up
@@ -193,7 +198,7 @@ function hostSnapshot(g) {
   }
   if (g.state === S.REVEAL) return { ...base, question: publicQuestion(g), reveal: g.lastReveal };
   if (g.state === S.SCOREBOARD) return { ...base, question: publicQuestion(g), leaderboard: leaderboard(g, 5) };
-  if (g.state === S.ENDED) return { ...base, leaderboard: leaderboard(g, 10) };
+  if (g.state === S.ENDED) return { ...base, leaderboard: leaderboard(g, 10), reportId: g.reportId ?? null };
   return base;
 }
 
@@ -246,6 +251,7 @@ function endQuestion(g) {
   endTimers(g);
   const q = currentQ(g);
   const counts = q.choices.map(() => 0);
+  const record = {};
 
   for (const p of g.players.values()) {
     const a = g.answers.get(p.id);
@@ -260,7 +266,9 @@ function endQuestion(g) {
     }
     p.score += points;
     p.lastResult = { answered: !!a, choice: a ? a.choice : null, isCorrect, points, streak: p.streak };
+    record[p.id] = { choice: a ? a.choice : null, correct: isCorrect, points, responseMs: a ? a.responseMs : null };
   }
+  g.history[g.qIndex] = record;
 
   // Ranks are computed after every score is updated, then attached per player.
   const order = ranked(g);
@@ -281,8 +289,19 @@ function goNext(g) {
     broadcastState(g);
   } else if (g.state === S.SCOREBOARD) {
     if (g.qIndex + 1 < g.quiz.questions.length) { g.qIndex++; startGetReady(g); }
-    else { g.state = S.ENDED; broadcastState(g); }
+    else finishGame(g, true);
   }
+}
+
+// Ends the game once, saving it to the report history.
+function finishGame(g, completed) {
+  endTimers(g);
+  g.state = S.ENDED;
+  if (g.reportId === undefined) {
+    try { g.reportId = store.saveGame(db, g, ranked(g), completed); }
+    catch (err) { g.reportId = null; console.error('Could not save game report:', err.message); }
+  }
+  broadcastState(g);
 }
 
 // ---------- HTTP routing ----------
@@ -294,7 +313,7 @@ const MIME = {
 };
 
 function serveStatic(req, res, pathname) {
-  const pretty = { '/': '/index.html', '/host': '/host.html', '/play': '/play.html' };
+  const pretty = { '/': '/index.html', '/host': '/host.html', '/play': '/play.html', '/reports': '/reports.html' };
   const rel = pretty[pathname] || pathname;
   const file = path.normalize(path.join(PUBLIC_DIR, rel));
   if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end(); }
@@ -305,6 +324,40 @@ function serveStatic(req, res, pathname) {
   });
 }
 
+function canSeeReports(req, url) {
+  const key = req.headers['x-reports-key'] || url.searchParams.get('key');
+  if (REPORTS_KEY && key && key.length === REPORTS_KEY.length
+    && crypto.timingSafeEqual(Buffer.from(key), Buffer.from(REPORTS_KEY))) return true;
+  const ip = req.socket.remoteAddress;
+  const local = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  return local && !req.headers['x-forwarded-for']; // a reverse proxy would make every visitor look local
+}
+
+// GET /api/reports, GET /api/reports/:id, GET /api/reports/:id/csv, DELETE /api/reports/:id
+function handleReports(req, res, url, parts) {
+  if (!canSeeReports(req, url)) {
+    return sendJson(res, 403, { error: 'Reports can only be opened on the computer that hosts QuizBlitz.', code: 'REPORTS_LOCAL_ONLY' });
+  }
+  if (!parts[2]) {
+    if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
+    return sendJson(res, 200, { reports: store.listReports(db) });
+  }
+  const reportId = Number(parts[2]);
+  if (!Number.isInteger(reportId) || reportId <= 0) return sendJson(res, 404, { error: 'Report not found' });
+  if (req.method === 'DELETE' && !parts[3]) {
+    return store.deleteReport(db, reportId) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Report not found' });
+  }
+  if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
+  const report = store.getReport(db, reportId);
+  if (!report) return sendJson(res, 404, { error: 'Report not found' });
+  if (parts[3] === 'csv') {
+    const name = `quizblitz-${report.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40) || 'report'}-${report.id}.csv`;
+    res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store' });
+    return res.end(store.reportCsv(report));
+  }
+  return sendJson(res, 200, report);
+}
+
 async function handleApi(req, res, url) {
   const parts = url.pathname.split('/').filter(Boolean); // ['api', 'games', pin, action]
 
@@ -312,13 +365,15 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { lanUrls: lanUrls(), port: PORT });
   }
 
+  if (parts[1] === 'reports') return handleReports(req, res, url, parts);
+
   if (req.method === 'POST' && url.pathname === '/api/games') {
     const body = await readBody(req);
     const quiz = validateQuiz(body.quiz);
     const g = {
       pin: newPin(), hostKey: id(), quiz, state: S.LOBBY, qIndex: 0,
       players: new Map(), hostStreams: new Set(), answers: new Map(),
-      timer: null, lastActivity: Date.now(),
+      timer: null, lastActivity: Date.now(), history: [], startedAt: null,
     };
     games.set(g.pin, g);
     return sendJson(res, 201, { pin: g.pin, hostKey: g.hostKey });
@@ -353,6 +408,7 @@ async function handleApi(req, res, url) {
         if (g.state !== S.LOBBY) return sendJson(res, 409, { error: 'Game already started' });
         if (g.players.size === 0) return sendJson(res, 409, { error: 'Wait for at least one player' });
         g.qIndex = 0;
+        g.startedAt = Date.now();
         startGetReady(g);
         break;
       case 'skip': // end the open question early
@@ -373,9 +429,7 @@ async function handleApi(req, res, url) {
         break;
       }
       case 'end':
-        endTimers(g);
-        g.state = S.ENDED;
-        broadcastState(g);
+        if (g.state !== S.ENDED) finishGame(g, false);
         break;
       default:
         return sendJson(res, 400, { error: 'Unknown action' });

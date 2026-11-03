@@ -85,7 +85,7 @@ button:active, .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 rgb
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.accent, .btn.accent { background: var(--accent); color: var(--accent-ink); }
 button.ghost, .btn.ghost { background: transparent; color: inherit; box-shadow: none; border: 2px solid currentColor; }
-button.small { padding: 8px 12px; font-size: 14px; }
+button.small, .btn.small { padding: 8px 12px; font-size: 14px; }
 
 .error { color: var(--bad); font-weight: 700; min-height: 1.2em; margin: 0; }
 .link { color: var(--on-bg); font-weight: 700; }

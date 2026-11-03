@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reports · QuizBlitz</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    .wrap .card { width: 100%; }
+    .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .head h1 { margin: 0; font-size: 36px; }
+    .list { display: grid; gap: 10px; }
+    .game { display: grid; grid-template-columns: 1fr auto auto auto; gap: 16px; align-items: center; cursor: pointer; text-align: left;
+      border: 0; font: inherit; color: var(--text); background: var(--surface); border-radius: var(--radius); padding: 16px 20px; box-shadow: var(--shadow); }
+    .game:hover { outline: 3px solid var(--accent); }
+    .game .title { font-weight: 900; font-size: 18px; }
+    .sub { color: var(--text-muted); font-size: 14px; font-weight: 600; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi { background: var(--surface); color: var(--text); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+    .kpi .n { font-size: 34px; font-weight: 900; }
+    .kpi .l { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+    .ring { --p: 0; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 15px;
+      background: conic-gradient(var(--good) calc(var(--p) * 1%), #e8e4f3 0); position: relative; color: var(--text); }
+    .ring::before { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--surface); }
+    .ring span { position: relative; }
+    .tabs { display: flex; gap: 8px; margin: 8px 0 12px; }
+    .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+    table { width: 100%; border-collapse: collapse; font-weight: 600; }
+    th { text-align: left; font-size: 13px; color: var(--text-muted); padding: 8px; }
+    td { padding: 10px 8px; border-top: 1px solid #ece8f6; vertical-align: middle; }
+    tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surface-2); }
+    .who { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+    .tag { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 800; }
+    .tag.bad { background: #fde8e8; color: var(--bad); } .tag.warn { background: #fff1d6; color: #8a5300; } .tag.good { background: #e3f6ec; color: #13744a; }
+    .q { display: grid; grid-template-columns: 1fr 260px; gap: 20px; align-items: center; }
+    .q h3 { margin: 0 0 6px; font-size: 18px; }
+    .dist { display: grid; gap: 6px; }
+    .dist .bar { display: grid; grid-template-columns: 26px 1fr 40px; gap: 8px; align-items: center; font-size: 14px; }
+    .dist .shape { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: #fff; }
+    .dist .shape svg { width: 14px; height: 14px; fill: currentColor; }
+    .dist .track { height: 22px; background: #eeebf6; border-radius: 6px; overflow: hidden; position: relative; }
+    .dist .fill { height: 100%; border-radius: 6px; }
+    .dist .label { position: absolute; left: 8px; top: 2px; font-size: 13px; font-weight: 800; color: var(--text); white-space: nowrap; }
+    .ok { color: var(--good); font-weight: 900; } .no { color: var(--bad); font-weight: 900; }
+    @media (max-width: 720px) { .q { grid-template-columns: 1fr; } .game { grid-template-columns: 1fr auto; } .game .hide-sm { display: none; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section id="s-list" data-screen>
+      <div class="head">
+        <h1 class="logo" style="margin:0">Quiz<span>Blitz</span> reports</h1>
+        <a class="btn ghost" href="/host">← Back to editor</a>
+      </div>
+      <p class="error" id="list-err" role="alert" style="color:#ffb4b4"></p>
+      <div class="list" id="games"></div>
+    </section>
+
+    <section id="s-report" data-screen class="hidden">
+      <div class="head">
+        <div>
+          <button class="ghost small" id="btn-back" type="button">← All reports</button>
+          <h1 id="r-title" style="margin-top:8px"></h1>
+          <p class="muted" id="r-meta" style="margin:4px 0 0"></p>
+        </div>
+        <div class="row">
+          <a class="btn ghost small" id="btn-csv" href="#">Download CSV</a>
+          <button class="ghost small" id="btn-delete" type="button">Delete</button>
+        </div>
+      </div>
+      <div class="kpis" id="kpis"></div>
+      <div class="tabs" role="tablist">
+        <button class="ghost small" role="tab" id="tab-summary" aria-selected="true" type="button">Summary</button>
+        <button class="ghost small" role="tab" id="tab-players" aria-selected="false" type="button">Players</button>
+        <button class="ghost small" role="tab" id="tab-questions" aria-selected="false" type="button">Questions</button>
+      </div>
+      <div id="panel"></div>
+    </section>
+  </main>
+  <script type="module" src="/reports.js"></script>
+</body>
+</html>

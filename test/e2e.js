@@ -147,6 +147,34 @@ const state = (s, idx) => (m) => m.type === 'STATE' && m.state === s && (idx ===
   assert.equal(avaEnd.rank, 1);
   console.log('Final:', end.leaderboard.map((x) => `${x.rank}. ${x.name} ${x.score}`).join(' | '));
 
+  // game history: the finished game was saved as a report
+  assert.ok(Number.isInteger(end.reportId), 'ENDED snapshot carries the saved report id');
+  const list = await call('/api/reports');
+  const listed = list.body.reports.find((r) => r.id === end.reportId);
+  assert.ok(listed && listed.players === 3 && listed.questionsPlayed === 2 && listed.completed);
+  const rep = (await call(`/api/reports/${end.reportId}`)).body;
+  assert.deepEqual(rep.players.map((x) => x.name), ['Ava', 'Ben', 'Cy']);
+  assert.equal(rep.players[0].score, end.leaderboard[0].score, 'report score matches the podium');
+  assert.equal(rep.players[0].correct, 2);
+  assert.deepEqual(rep.questions[0].counts, [0, 2, 0, 1]);
+  assert.equal(rep.questions[1].unanswered, 2);
+  assert.equal(Math.round(rep.questions[0].correctPct * 100), 67);
+  assert.ok(rep.questions[1].difficult, 'Q2 answered correctly by 1 of 3 -> difficult');
+  assert.ok(rep.players[2].needsHelp && rep.players[2].didNotFinish, 'Cy flagged');
+  assert.equal(rep.players[1].answers[1], null, 'Ben did not answer Q2');
+  const csv = await fetch(`${BASE}/api/reports/${end.reportId}/csv`);
+  assert.equal(csv.status, 200);
+  const csvText = await csv.text();
+  assert.match(csvText, /"Ava"/);
+  assert.match(csvText, /"Q1 answer"/);
+  // reports are private to the host computer: requests through a proxy look remote
+  const remote = await fetch(`${BASE}/api/reports`, { headers: { 'X-Forwarded-For': '203.0.113.9' } });
+  assert.equal(remote.status, 403);
+  const del = await fetch(`${BASE}/api/reports/${end.reportId}`, { method: 'DELETE' });
+  assert.equal(del.status, 200);
+  assert.equal((await call(`/api/reports/${end.reportId}`)).status, 404);
+  console.log('Report: saved, correct stats, CSV export, local-only, deleted');
+
   host.close(); players.forEach((p) => p.sse.close());
   console.log('ALL TESTS PASSED');
   process.exit(0);
