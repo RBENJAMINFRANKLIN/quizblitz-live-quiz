@@ -37,11 +37,13 @@ export function avatarEl(avatar, size = 48, extraClass = '') {
   return node;
 }
 
-export async function api(path, body) {
-  const res = await fetch(path, body === undefined ? {} : {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+// GET when no body; POST (or `method`) with JSON otherwise. The X-QuizBlitz header
+// is the server's CSRF check for cookie-authenticated requests.
+export async function api(path, body, method) {
+  const res = await fetch(path, body === undefined && !method ? {} : {
+    method: method || 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-QuizBlitz': '1' },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

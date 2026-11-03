@@ -2,11 +2,11 @@
   "name": "quizblitz",
   "version": "1.0.0",
   "private": true,
-  "description": "Live multiplayer quiz: host screen with PIN + QR, players join from phones",
+  "description": "Live multiplayer quiz (Kahoot-style): 9 question types, music, host accounts, quiz library and reports",
   "main": "server.js",
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
-    "test": "node test/e2e.js"
+    "test": "node test/e2e.js && node test/features.js"
   },
   "engines": {
     "node": ">=22.13"

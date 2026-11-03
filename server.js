@@ -12,12 +12,16 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const store = require('./db');
+const Q = require('./questions');
+const { isOffensive, randomName, isGeneratedName } = require('./filter');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const db = store.open(process.env.QUIZBLITZ_DB || path.join(__dirname, 'data', 'quizblitz.db'));
 // Reports are private to the host: allowed from this computer, or with REPORTS_KEY when hosted.
 const REPORTS_KEY = process.env.REPORTS_KEY || '';
+const SESSION_COOKIE = 'qb_session';
+const SECURE_COOKIES = process.env.COOKIE_SECURE === 'true';
 
 const GET_READY_MS = 4000;      // countdown before each question opens
 const ANSWER_GRACE_MS = 400;    // accept answers that were in flight at time-up
@@ -82,33 +86,6 @@ function lanUrls() {
     }
   }
   return urls;
-}
-
-// Validates and normalizes a quiz submitted by the host.
-function validateQuiz(q) {
-  if (!q || typeof q !== 'object') throw new Error('Quiz is missing');
-  const title = String(q.title || 'Untitled quiz').slice(0, 80);
-  if (!Array.isArray(q.questions) || q.questions.length === 0) throw new Error('Add at least one question');
-  if (q.questions.length > 100) throw new Error('Too many questions (max 100)');
-  const questions = q.questions.map((qq, i) => {
-    const text = String(qq.text || '').trim().slice(0, 200);
-    if (!text) throw new Error(`Question ${i + 1} has no text`);
-    const choices = (Array.isArray(qq.choices) ? qq.choices : [])
-      .map((c) => String(c ?? '').trim().slice(0, 80));
-    if (choices.length < 2 || choices.length > 4 || choices.some((c) => !c)) {
-      throw new Error(`Question ${i + 1} needs 2–4 non-empty answers`);
-    }
-    const correct = [...new Set((Array.isArray(qq.correct) ? qq.correct : [qq.correct])
-      .map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < choices.length))];
-    if (!correct.length) throw new Error(`Question ${i + 1} needs a correct answer`);
-    const time = Math.min(120, Math.max(5, Number(qq.time) || 20));
-    const image = String(qq.image || '').trim();
-    if (image && (!/^https?:\/\/\S+$/i.test(image) || image.length > 500)) {
-      throw new Error(`Question ${i + 1} image must be an http(s) link`);
-    }
-    return { text, choices, correct, time, image };
-  });
-  return { title, questions };
 }
 
 // Kahoot-style scoring: up to 1000 points, linearly decaying to 500 at the
@@ -186,12 +163,11 @@ function endTimers(g) {
 function touch(g) { g.lastActivity = Date.now(); }
 
 function publicQuestion(g) {
-  const q = currentQ(g);
-  return { index: g.qIndex, total: g.quiz.questions.length, text: q.text, choices: q.choices, time: q.time, image: q.image };
+  return Q.publicView(currentQ(g), g.qIndex, g.quiz.questions.length, g.options.showOnDevices);
 }
 
 function hostSnapshot(g) {
-  const base = { type: 'STATE', state: g.state, pin: g.pin, title: g.quiz.title, players: playerList(g) };
+  const base = { type: 'STATE', state: g.state, pin: g.pin, title: g.quiz.title, players: playerList(g), locked: g.locked, options: g.options };
   if (g.state === S.GET_READY) return { ...base, question: publicQuestion(g), startsAt: g.questionStartsAt };
   if (g.state === S.QUESTION) {
     return { ...base, question: publicQuestion(g), endsAt: g.endsAt, answeredCount: g.answers.size };
@@ -211,7 +187,7 @@ function playerSnapshot(g, p) {
     const answered = g.answers.has(p.id);
     return { ...base, question: publicQuestion(g), endsAt: g.endsAt, answered };
   }
-  if (g.state === S.REVEAL) return { ...base, result: p.lastResult || null };
+  if (g.state === S.REVEAL) return { ...base, result: p.lastResult || null, question: publicQuestion(g) };
   if (g.state === S.SCOREBOARD) return { ...base, rank: rankOf(g, p), total: g.players.size };
   if (g.state === S.ENDED) return { ...base, rank: rankOf(g, p), total: g.players.size };
   return base;
@@ -250,23 +226,25 @@ function endQuestion(g) {
   if (g.state !== S.QUESTION) return;
   endTimers(g);
   const q = currentQ(g);
-  const counts = q.choices.map(() => 0);
+  const scored = Q.isScored(q);
   const record = {};
 
   for (const p of g.players.values()) {
     const a = g.answers.get(p.id);
-    if (a) counts[a.choice]++;
-    const isCorrect = !!a && q.correct.includes(a.choice);
+    const verdict = a ? Q.judge(q, a.answer) : { correct: false, factor: 0 };
     let points = 0;
-    if (isCorrect) {
-      p.streak += 1;
-      points = scoreAnswer(a.responseMs, q.time * 1000) + streakBonus(p.streak);
-    } else {
-      p.streak = 0;
+    if (scored) {
+      if (verdict.correct) {
+        p.streak += 1;
+        points = Math.round((scoreAnswer(a.responseMs, q.time * 1000) * verdict.factor + streakBonus(p.streak)) * Q.multiplier(q));
+      } else {
+        p.streak = 0;
+      }
     }
     p.score += points;
-    p.lastResult = { answered: !!a, choice: a ? a.choice : null, isCorrect, points, streak: p.streak };
-    record[p.id] = { choice: a ? a.choice : null, correct: isCorrect, points, responseMs: a ? a.responseMs : null };
+    p.lastResult = { answered: !!a, scored, isCorrect: scored && verdict.correct, points, streak: p.streak,
+      correctText: scored ? Q.describeCorrect(q) : null, yourAnswer: a ? Q.describeAnswer(q, a.answer) : null };
+    record[p.id] = { answer: a ? a.answer : null, correct: scored && verdict.correct, points, responseMs: a ? a.responseMs : null };
   }
   g.history[g.qIndex] = record;
 
@@ -279,7 +257,7 @@ function endQuestion(g) {
   });
 
   g.state = S.REVEAL;
-  g.lastReveal = { correct: q.correct, counts, answeredCount: g.answers.size };
+  g.lastReveal = Q.revealSummary(q, [...g.answers.values()].map((x) => x.answer));
   broadcastState(g);
 }
 
@@ -313,7 +291,7 @@ const MIME = {
 };
 
 function serveStatic(req, res, pathname) {
-  const pretty = { '/': '/index.html', '/host': '/host.html', '/play': '/play.html', '/reports': '/reports.html' };
+  const pretty = { '/': '/index.html', '/host': '/host.html', '/play': '/play.html', '/reports': '/reports.html', '/library': '/library.html' };
   const rel = pretty[pathname] || pathname;
   const file = path.normalize(path.join(PUBLIC_DIR, rel));
   if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end(); }
@@ -322,6 +300,108 @@ function serveStatic(req, res, pathname) {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
     res.end(data);
   });
+}
+
+// ---------- accounts: cookies, sessions, CSRF and rate limiting ----------
+
+function cookies(req) {
+  const out = {};
+  for (const part of String(req.headers.cookie || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+
+function currentUser(req) {
+  if (req.user === undefined) req.user = store.sessionUser(db, cookies(req)[SESSION_COOKIE]);
+  return req.user;
+}
+
+function setSessionCookie(res, token, maxAge) {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${SECURE_COOKIES ? '; Secure' : ''}`);
+}
+
+// Browsers cannot send this custom header cross-site without a CORS preflight
+// (which this server never approves), so it blocks CSRF on cookie-authenticated requests.
+const hasCsrfHeader = (req) => req.headers['x-quizblitz'] === '1';
+
+const hits = new Map();
+function rateLimited(req, bucket, limit, windowMs = 60000) {
+  const key = `${bucket}:${req.socket.remoteAddress}`;
+  const now = Date.now();
+  const list = (hits.get(key) || []).filter((t) => t > now - windowMs);
+  list.push(now);
+  hits.set(key, list);
+  return list.length > limit;
+}
+setInterval(() => hits.clear(), 10 * 60000).unref();
+
+async function handleAuth(req, res, parts) {
+  const action = parts[2];
+  if (req.method === 'GET' && action === 'me') {
+    const u = currentUser(req);
+    return sendJson(res, 200, { user: u });
+  }
+  if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+  if (!hasCsrfHeader(req)) return sendJson(res, 403, { error: 'Missing request header' });
+  if (action === 'logout') {
+    store.deleteSession(db, cookies(req)[SESSION_COOKIE]);
+    setSessionCookie(res, '', 0);
+    return sendJson(res, 200, { ok: true });
+  }
+  if (rateLimited(req, 'auth', 10)) return sendJson(res, 429, { error: 'Too many attempts. Wait a minute and try again.' });
+  const body = await readBody(req);
+  let user;
+  if (action === 'register') {
+    try { user = store.createUser(db, body); }
+    catch (err) { return sendJson(res, err.status || 400, { error: err.message }); }
+  } else if (action === 'login') {
+    user = store.checkLogin(db, body.email, body.password);
+    if (!user) return sendJson(res, 401, { error: 'Email or password is incorrect.' });
+  } else {
+    return sendJson(res, 404, { error: 'Not found' });
+  }
+  const { token, maxAge } = store.createSession(db, user.id);
+  setSessionCookie(res, token, maxAge);
+  return sendJson(res, action === 'register' ? 201 : 200, { user });
+}
+
+// GET/POST /api/quizzes, GET/PUT/DELETE /api/quizzes/:id, POST /api/quizzes/:id/duplicate
+async function handleQuizzes(req, res, parts) {
+  const user = currentUser(req);
+  if (!user) return sendJson(res, 401, { error: 'Sign in to use your quiz library.', code: 'SIGN_IN' });
+  if (req.method !== 'GET' && !hasCsrfHeader(req)) return sendJson(res, 403, { error: 'Missing request header' });
+  const quizId = parts[2] ? Number(parts[2]) : null;
+  if (parts[2] && !(Number.isInteger(quizId) && quizId > 0)) return sendJson(res, 404, { error: 'Quiz not found' });
+  try {
+    if (!quizId) {
+      if (req.method === 'GET') return sendJson(res, 200, { quizzes: store.listQuizzes(db, user.id) });
+      if (req.method === 'POST') {
+        const quiz = Q.validateQuiz((await readBody(req)).quiz);
+        return sendJson(res, 201, { id: store.saveQuiz(db, user.id, quiz) });
+      }
+    } else if (parts[3] === 'duplicate' && req.method === 'POST') {
+      const q = store.getQuiz(db, user.id, quizId);
+      if (!q) return sendJson(res, 404, { error: 'Quiz not found' });
+      return sendJson(res, 201, { id: store.saveQuiz(db, user.id, { ...q.quiz, title: `${q.quiz.title} (copy)`.slice(0, 80) }) });
+    } else if (!parts[3]) {
+      if (req.method === 'GET') {
+        const q = store.getQuiz(db, user.id, quizId);
+        return q ? sendJson(res, 200, q) : sendJson(res, 404, { error: 'Quiz not found' });
+      }
+      if (req.method === 'PUT') {
+        const quiz = Q.validateQuiz((await readBody(req)).quiz);
+        return store.saveQuiz(db, user.id, quiz, quizId) ? sendJson(res, 200, { id: quizId }) : sendJson(res, 404, { error: 'Quiz not found' });
+      }
+      if (req.method === 'DELETE') {
+        return store.deleteQuiz(db, user.id, quizId) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Quiz not found' });
+      }
+    }
+  } catch (err) {
+    return sendJson(res, err.status || 400, { error: err.message });
+  }
+  return sendJson(res, 405, { error: 'Method not allowed' });
 }
 
 function canSeeReports(req, url) {
@@ -335,20 +415,25 @@ function canSeeReports(req, url) {
 
 // GET /api/reports, GET /api/reports/:id, GET /api/reports/:id/csv, DELETE /api/reports/:id
 function handleReports(req, res, url, parts) {
-  if (!canSeeReports(req, url)) {
-    return sendJson(res, 403, { error: 'Reports can only be opened on the computer that hosts QuizBlitz.', code: 'REPORTS_LOCAL_ONLY' });
+  // Signed-in hosts see their own games from anywhere; games hosted without an
+  // account are visible only on the host computer (or with REPORTS_KEY).
+  const user = currentUser(req);
+  if (!user && !canSeeReports(req, url)) {
+    return sendJson(res, 403, { error: 'Sign in to see your reports, or open this page on the computer that hosts QuizBlitz.', code: 'REPORTS_LOCAL_ONLY' });
   }
+  const ownerId = user ? user.id : null;
+  if (req.method !== 'GET' && user && !hasCsrfHeader(req)) return sendJson(res, 403, { error: 'Missing request header' });
   if (!parts[2]) {
     if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
-    return sendJson(res, 200, { reports: store.listReports(db) });
+    return sendJson(res, 200, { reports: store.listReports(db, ownerId) });
   }
   const reportId = Number(parts[2]);
   if (!Number.isInteger(reportId) || reportId <= 0) return sendJson(res, 404, { error: 'Report not found' });
   if (req.method === 'DELETE' && !parts[3]) {
-    return store.deleteReport(db, reportId) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Report not found' });
+    return store.deleteReport(db, reportId, ownerId) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: 'Report not found' });
   }
   if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
-  const report = store.getReport(db, reportId);
+  const report = store.getReport(db, reportId, ownerId);
   if (!report) return sendJson(res, 404, { error: 'Report not found' });
   if (parts[3] === 'csv') {
     const name = `quizblitz-${report.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 40) || 'report'}-${report.id}.csv`;
@@ -366,13 +451,31 @@ async function handleApi(req, res, url) {
   }
 
   if (parts[1] === 'reports') return handleReports(req, res, url, parts);
+  if (parts[1] === 'auth') return handleAuth(req, res, parts);
+  if (parts[1] === 'quizzes') return handleQuizzes(req, res, parts);
 
   if (req.method === 'POST' && url.pathname === '/api/games') {
+    if (!hasCsrfHeader(req)) return sendJson(res, 403, { error: 'Missing request header' });
+    const user = currentUser(req);
     const body = await readBody(req);
-    const quiz = validateQuiz(body.quiz);
+    let quiz;
+    if (body.quizId !== undefined) {
+      if (!user) return sendJson(res, 401, { error: 'Sign in to host a quiz from your library.', code: 'SIGN_IN' });
+      const saved = store.getQuiz(db, user.id, Number(body.quizId));
+      if (!saved) return sendJson(res, 404, { error: 'Quiz not found' });
+      quiz = Q.validateQuiz(saved.quiz);
+      store.countPlay(db, user.id, saved.id);
+    } else {
+      quiz = Q.validateQuiz(body.quiz);
+    }
+    const o = body.options || {};
+    const options = {
+      shuffleQuestions: !!o.shuffleQuestions, shuffleAnswers: !!o.shuffleAnswers, nameGenerator: !!o.nameGenerator,
+      lockOnStart: o.lockOnStart !== false, showOnDevices: o.showOnDevices !== false,
+    };
     const g = {
-      pin: newPin(), hostKey: id(), quiz, state: S.LOBBY, qIndex: 0,
-      players: new Map(), hostStreams: new Set(), answers: new Map(),
+      pin: newPin(), hostKey: id(), quiz: Q.prepareForGame(quiz, options), options, locked: false, ownerId: user ? user.id : null,
+      state: S.LOBBY, qIndex: 0, players: new Map(), hostStreams: new Set(), answers: new Map(),
       timer: null, lastActivity: Date.now(), history: [], startedAt: null,
     };
     games.set(g.pin, g);
@@ -387,7 +490,15 @@ async function handleApi(req, res, url) {
 
   // GET /api/games/:pin — does the game exist (used to validate a typed PIN)?
   if (req.method === 'GET' && !action) {
-    return sendJson(res, 200, { pin: g.pin, state: g.state, title: g.quiz.title });
+    return sendJson(res, 200, { pin: g.pin, state: g.state, title: g.quiz.title, locked: g.locked, nameGenerator: g.options.nameGenerator });
+  }
+
+  // Friendly nickname generator: a fresh suggestion that is not already taken.
+  if (req.method === 'GET' && action === 'random-name') {
+    const taken = new Set([...g.players.values()].map((p) => p.name.toLowerCase()));
+    let name = randomName();
+    for (let i = 0; i < 20 && taken.has(name.toLowerCase()); i++) name = randomName();
+    return sendJson(res, 200, { name });
   }
 
   // Host event stream
@@ -409,6 +520,7 @@ async function handleApi(req, res, url) {
         if (g.players.size === 0) return sendJson(res, 409, { error: 'Wait for at least one player' });
         g.qIndex = 0;
         g.startedAt = Date.now();
+        if (g.options.lockOnStart) g.locked = true;
         startGetReady(g);
         break;
       case 'skip': // end the open question early
@@ -428,6 +540,10 @@ async function handleApi(req, res, url) {
         }
         break;
       }
+      case 'lock': case 'unlock':
+        g.locked = body.action === 'lock';
+        toHosts(g, hostSnapshot(g));
+        break;
       case 'end':
         if (g.state !== S.ENDED) finishGame(g, false);
         break;
@@ -442,6 +558,14 @@ async function handleApi(req, res, url) {
     const name = String(body.name || '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
     if (!name) return sendJson(res, 400, { error: 'Enter a nickname', code: 'USER_INPUT' });
     if (g.state === S.ENDED) return sendJson(res, 409, { error: 'This game has ended', code: 'GAME_ENDED' });
+    if (g.locked) return sendJson(res, 409, { error: 'The host has locked this game. Ask them to unlock it.', code: 'GAME_LOCKED' });
+    if (g.options.nameGenerator && !isGeneratedName(name)) {
+      return sendJson(res, 400, { error: 'This game uses the nickname generator. Spin for a name.', code: 'USE_GENERATOR' });
+    }
+    // Check the full text too: cutting it to the length limit must not hide a word.
+    if (isOffensive(name) || isOffensive(String(body.name).slice(0, 200))) {
+      return sendJson(res, 400, { error: 'Please choose a different nickname.', code: 'NAME_NOT_ALLOWED' });
+    }
     if (g.players.size >= MAX_PLAYERS) return sendJson(res, 409, { error: 'This game is full', code: 'MAX_PLAYERS_REACHED' });
     const taken = [...g.players.values()].some((p) => p.name.toLowerCase() === name.toLowerCase());
     if (taken) return sendJson(res, 409, { error: 'That nickname is taken — try another', code: 'NICKNAME_EXISTS' });
@@ -494,13 +618,12 @@ async function handleApi(req, res, url) {
     }
     if (receivedAt > g.endsAt + ANSWER_GRACE_MS) return sendJson(res, 409, { error: 'Too late', code: 'QUESTION_CLOSED' });
     if (g.answers.has(p.id)) return sendJson(res, 409, { error: 'Already answered', code: 'ALREADY_ANSWERED' });
-    const choice = Number(body.choice);
-    if (!Number.isInteger(choice) || choice < 0 || choice >= currentQ(g).choices.length) {
-      return sendJson(res, 400, { error: 'Invalid answer' });
-    }
+    let answer;
+    try { answer = Q.parseAnswer(currentQ(g), body); }
+    catch (err) { return sendJson(res, 400, { error: err.message, code: 'INVALID_ANSWER' }); }
     // Response time is measured on the server clock, so a slow phone clock
     // cannot earn extra speed points.
-    g.answers.set(p.id, { choice, responseMs: Math.max(0, receivedAt - g.questionOpenedAt) });
+    g.answers.set(p.id, { answer, responseMs: Math.max(0, receivedAt - g.questionOpenedAt) });
     toHosts(g, { type: 'ANSWER_COUNT', answeredCount: g.answers.size, playerCount: g.players.size });
     if (g.answers.size >= g.players.size) setTimeout(() => endQuestion(g), 300);
     return sendJson(res, 200, { ok: true });

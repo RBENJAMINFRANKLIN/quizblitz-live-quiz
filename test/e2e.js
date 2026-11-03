@@ -4,7 +4,7 @@ const assert = require('assert');
 const BASE = process.env.BASE || 'http://localhost:3000';
 
 async function call(path, body) {
-  const res = await fetch(BASE + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const res = await fetch(BASE + path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-QuizBlitz': '1' }, body: JSON.stringify(body) } : {});
   return { status: res.status, body: await res.json() };
 }
 
@@ -156,7 +156,7 @@ const state = (s, idx) => (m) => m.type === 'STATE' && m.state === s && (idx ===
   assert.deepEqual(rep.players.map((x) => x.name), ['Ava', 'Ben', 'Cy']);
   assert.equal(rep.players[0].score, end.leaderboard[0].score, 'report score matches the podium');
   assert.equal(rep.players[0].correct, 2);
-  assert.deepEqual(rep.questions[0].counts, [0, 2, 0, 1]);
+  assert.deepEqual(rep.questions[0].summary.counts, [0, 2, 0, 1]);
   assert.equal(rep.questions[1].unanswered, 2);
   assert.equal(Math.round(rep.questions[0].correctPct * 100), 67);
   assert.ok(rep.questions[1].difficult, 'Q2 answered correctly by 1 of 3 -> difficult');

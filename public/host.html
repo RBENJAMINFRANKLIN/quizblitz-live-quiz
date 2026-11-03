@@ -104,19 +104,32 @@
   <section id="s-edit" data-screen class="wrap editor">
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
       <h1 class="logo" style="margin:0;font-size:36px">Quiz<span>Blitz</span></h1>
-      <div class="row">
-        <button class="ghost small" id="btn-sample" type="button">Load sample quiz</button>
-        <button class="ghost small" id="btn-import" type="button">Import JSON</button>
-        <button class="ghost small" id="btn-export" type="button">Export JSON</button>
-        <a class="btn ghost small" href="/reports">📊 Reports</a>
-      </div>
+      <div class="row" id="account-bar"></div>
+    </div>
+    <div class="row" style="margin-bottom:12px">
+      <button class="ghost small" id="btn-new" type="button">+ New quiz</button>
+      <button class="ghost small" id="btn-sample" type="button">Load sample quiz</button>
+      <button class="ghost small" id="btn-import" type="button">Import JSON</button>
+      <button class="ghost small" id="btn-export" type="button">Export JSON</button>
+      <a class="btn ghost small" href="/library">📚 My library</a>
+      <a class="btn ghost small" href="/reports">📊 Reports</a>
     </div>
     <div class="card stack" style="margin-bottom:12px">
-      <input id="quiz-title" placeholder="Quiz title" aria-label="Quiz title" style="text-align:left">
+      <div class="row">
+        <input id="quiz-title" placeholder="Quiz title" aria-label="Quiz title" style="text-align:left;flex:1;width:auto">
+        <button class="accent small" id="btn-save" type="button">💾 Save to library</button>
+      </div>
+      <p class="sub" id="save-status" role="status" style="margin:0"></p>
     </div>
     <div id="questions" class="stack"></div>
-    <div class="row" style="margin:16px 0 40px">
+    <div class="row" style="margin:16px 0 12px">
       <button class="ghost" id="btn-add" type="button">+ Add question</button>
+    </div>
+    <details class="card options" id="game-options">
+      <summary>⚙️ Game options</summary>
+      <div class="opt-grid" id="option-list"></div>
+    </details>
+    <div class="row" style="margin:16px 0 40px">
       <span class="grow"></span>
       <p class="error" id="edit-err" role="alert" style="color:#ffb4b4"></p>
       <button class="accent" id="btn-host" type="button">Host live game ▶</button>
@@ -137,10 +150,14 @@
       <div id="qr" aria-label="QR code to join the game"></div>
     </div>
     <div class="row" style="justify-content:space-between;margin-top:24px">
-      <div class="pill">👤 <span id="player-count">0</span></div>
+      <div class="row"><div class="pill">👤 <span id="player-count">0</span></div><span id="mute-lobby"></span></div>
       <h2 style="margin:0" id="lobby-title"></h2>
-      <button class="accent" id="btn-start" disabled>Start</button>
+      <div class="row">
+        <button class="ghost" id="btn-lock" type="button">🔓 Lock</button>
+        <button class="accent" id="btn-start" disabled>Start</button>
+      </div>
     </div>
+    <p class="locked-banner hidden" id="locked-banner">🔒 Game locked: nobody new can join</p>
     <p class="muted" id="lobby-hint" style="text-align:center">Waiting for players…</p>
     <div class="players" id="players"></div>
   </section>
@@ -166,8 +183,8 @@
     <div class="answers host" id="q-choices"></div>
     <div class="bottombar">
       <span id="q-num"></span>
-      <span>Game PIN: <span class="pin-tag" id="q-pin"></span></span>
-      <button class="small" id="btn-skip">Skip ⏭</button>
+      <span>Game PIN: <span class="pin-tag" id="q-pin"></span> <span id="q-points" class="pin-tag hidden" style="background:var(--a2);color:var(--a2-ink)">2× points</span></span>
+      <span class="row"><span id="mute-q"></span><button class="small" id="btn-skip">Skip ⏭</button></span>
     </div>
   </section>
 
@@ -176,7 +193,7 @@
     <h2 class="question-text" id="r-text"></h2>
     <div class="qmid">
       <div></div>
-      <div class="bars" id="r-bars"></div>
+      <div class="reveal-main" id="r-bars"></div>
       <div class="count-box"><span class="n" id="r-answers">0</span>Answers</div>
     </div>
     <div class="answers host" id="r-choices"></div>

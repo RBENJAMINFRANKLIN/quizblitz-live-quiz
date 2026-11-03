@@ -7,8 +7,12 @@ const secs = (ms) => (ms == null ? '–' : `${(ms / 1000).toFixed(1)}s`);
 const when = (t) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const COLORS = ['var(--a0)', 'var(--a1)', 'var(--a2)', 'var(--a3)'];
 
-async function get(path, opts) {
-  const res = await fetch(path, opts);
+// /reports?key=… (REPORTS_KEY) opens no-account reports from another computer.
+const KEY = new URLSearchParams(location.search).get('key') || '';
+
+async function get(path, opts = {}) {
+  const headers = { 'X-QuizBlitz': '1', ...(KEY ? { 'X-Reports-Key': KEY } : {}), ...(opts.headers || {}) };
+  const res = await fetch(path, { ...opts, headers });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
   return body;
@@ -52,7 +56,7 @@ async function openReport(id) {
   document.getElementById('r-title').textContent = report.title;
   document.getElementById('r-meta').textContent = `${when(report.startedAt)} · PIN ${report.pin} · `
     + `${report.summary.questions} of ${report.summary.questionsInQuiz} questions played${report.completed ? '' : ' (ended early)'}`;
-  document.getElementById('btn-csv').href = `/api/reports/${id}/csv`;
+  document.getElementById('btn-csv').href = `/api/reports/${id}/csv${KEY ? `?key=${encodeURIComponent(KEY)}` : ''}`;
   const s = report.summary;
   document.getElementById('kpis').replaceChildren(
     kpi(ring(s.accuracy), 'Correct answers'),
@@ -111,7 +115,7 @@ function players() {
         onclick: () => toggle(row, detail), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(row, detail); } } },
       el('td', {}, String(p.rank)),
       el('td', {}, el('span', { class: 'who' }, avatarEl(p.avatar, 32), p.name)),
-      el('td', {}, `${p.correct}/${report.summary.questions} `, el('span', { class: 'sub' }, pct(p.accuracy))),
+      el('td', {}, report.summary.scoredQuestions ? `${p.correct}/${report.summary.scoredQuestions} ` : '–', el('span', { class: 'sub' }, pct(p.accuracy))),
       el('td', {}, String(p.unanswered)),
       el('td', {}, p.score.toLocaleString()),
       el('td', {}, p.needsHelp ? el('span', { class: 'tag warn' }, 'Needs help') : ''));
@@ -132,11 +136,43 @@ function playerAnswers(p) {
       return el('tr', {},
         el('td', { style: 'width:40px' }, `Q${i + 1}`),
         el('td', {}, q.text),
-        el('td', {}, a ? q.choices[a.choice] : el('span', { class: 'sub' }, 'No answer')),
-        el('td', {}, a ? el('span', { class: a.correct ? 'ok' : 'no' }, a.correct ? '✔ correct' : '✖ wrong') : ''),
+        el('td', {}, a ? a.text : el('span', { class: 'sub' }, 'No answer')),
+        el('td', {}, a && a.scored ? el('span', { class: a.correct ? 'ok' : 'no' }, a.correct ? '✔ correct' : '✖ wrong') : a ? el('span', { class: 'sub' }, 'no right answer') : ''),
         el('td', {}, a ? `${a.points} pts` : '0 pts'),
         el('td', { class: 'sub' }, a ? secs(a.ms) : ''));
     })));
+}
+
+const TYPE_LABEL = { quiz: 'Quiz', truefalse: 'True or false', typeanswer: 'Type answer', slider: 'Slider', puzzle: 'Puzzle',
+  droppin: 'Drop pin', poll: 'Poll', wordcloud: 'Word cloud', openended: 'Open-ended' };
+
+function choiceBars(q) {
+  return el('div', { class: 'dist' }, ...q.choices.map((c, i) => {
+    const share = q.answered ? q.summary.counts[i] / q.answered : 0;
+    const right = q.correctChoices.includes(i);
+    return el('div', { class: 'bar' },
+      el('span', { class: 'shape', style: `background:${COLORS[i]}`, html: SHAPES[i] }),
+      el('div', { class: 'track' }, el('div', { class: 'fill', style: `width:${Math.round(share * 100)}%;background:${COLORS[i]};opacity:${right || !q.scored ? 1 : 0.45}` }),
+        el('span', { class: 'label' }, `${c}${right ? '  ✔' : ''}`)),
+      el('span', { style: 'text-align:right;font-weight:800' }, String(q.summary.counts[i])));
+  }));
+}
+
+function typeDetail(q) {
+  const s = q.summary;
+  if (q.choices) return choiceBars(q);
+  if (s.responses) {
+    if (!s.responses.length) return el('p', { class: 'sub' }, 'No answers.');
+    return el('div', { class: 'row', style: 'gap:8px' }, ...s.responses.map((r) => el('span', {
+      class: `tag ${s.type === 'typeanswer' ? (r.correct ? 'good' : 'bad') : 'warn'}` }, `${r.text} ×${r.count}`)));
+  }
+  if (s.type === 'slider') {
+    return el('p', { style: 'margin:0' }, `Average answer: ${s.average === null ? '–' : Math.round(s.average * 10) / 10}${s.unit ? ` ${s.unit}` : ''}`,
+      el('br'), el('span', { class: 'sub' }, `Answers: ${s.values.join(', ') || 'none'}`));
+  }
+  if (s.type === 'puzzle') return el('p', { style: 'margin:0' }, `${s.correctCount} of ${s.answeredCount} got the order right.`);
+  if (s.type === 'droppin') return el('p', { style: 'margin:0' }, `${s.pins.filter((p) => p.correct).length} of ${s.answeredCount} pins in the right area.`);
+  return el('span');
 }
 
 function questions() {
@@ -144,18 +180,12 @@ function questions() {
     el('div', { class: 'q' },
       el('div', {},
         el('h3', {}, `Q${q.index + 1}. ${q.text}`),
+        el('p', { class: 'sub', style: 'margin:0 0 4px' }, `${TYPE_LABEL[q.type] || q.type}${q.points === 'double' ? ' · double points' : ''}${!q.scored ? ' · no points' : ''}`),
+        q.scored ? el('p', { style: 'margin:0 0 6px;font-weight:800' }, `Correct answer: ${q.correctText}`) : null,
         el('p', { class: 'sub', style: 'margin:0 0 10px' }, `${q.answered} answered · ${q.unanswered} no answer · average time ${secs(q.avgMs)} of ${q.time}s`),
-        el('div', { class: 'dist' }, ...q.choices.map((c, i) => {
-          const share = q.answered ? q.counts[i] / q.answered : 0;
-          const right = q.correctChoices.includes(i);
-          return el('div', { class: 'bar' },
-            el('span', { class: 'shape', style: `background:${COLORS[i]}`, html: SHAPES[i] }),
-            el('div', { class: 'track' }, el('div', { class: 'fill', style: `width:${Math.round(share * 100)}%;background:${COLORS[i]};opacity:${right ? 1 : 0.45}` }),
-              el('span', { class: 'label' }, `${c}${right ? '  ✔' : ''}`)),
-            el('span', { style: 'text-align:right;font-weight:800' }, String(q.counts[i])));
-        }))),
-      el('div', { class: 'stack', style: 'align-items:center' }, ring(q.correctPct),
-        q.difficult ? el('span', { class: 'tag bad' }, 'Difficult') : el('span', { class: 'tag good' }, 'Most got it')))));
+        typeDetail(q)),
+      el('div', { class: 'stack', style: 'align-items:center' }, q.scored ? ring(q.correctPct) : el('span', { class: 'tag warn' }, 'Not scored'),
+        !q.scored ? null : q.difficult ? el('span', { class: 'tag bad' }, 'Difficult') : el('span', { class: 'tag good' }, 'Most got it')))));
 }
 
 // ---------------- wiring ----------------

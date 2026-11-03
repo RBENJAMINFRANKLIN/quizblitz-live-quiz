@@ -56,6 +56,11 @@
         <h1 class="logo">Quiz<span>Blitz</span></h1>
         <form class="card stack" id="name-form" autocomplete="off">
           <input id="name" maxlength="15" placeholder="Nickname" aria-label="Nickname" required autocapitalize="words">
+          <div class="stack hidden" id="gen-box" style="align-items:center">
+            <p class="sub" style="margin:0">Your nickname</p>
+            <p class="big" id="gen-name" style="color:var(--text);font-size:30px" aria-live="polite"></p>
+            <button class="ghost small" type="button" id="btn-spin" style="color:var(--text)"><span>🎲 Spin for another (<span id="spins">3</span> left)</span></button>
+          </div>
           <button class="accent" type="submit">OK, go!</button>
           <p class="error" id="name-err" role="alert"></p>
         </form>
@@ -104,6 +109,7 @@
         </div>
         <p class="q-small" id="a-text"></p>
         <div class="answers player" id="a-buttons"></div>
+        <div id="a-custom"></div>
       </div>
     </section>
 
@@ -122,6 +128,7 @@
         <p class="huge" id="r-icon"></p>
         <p class="big" id="r-title"></p>
         <p class="muted" id="r-streak" style="color:#fff;font-weight:800"></p>
+        <p class="correct-was hidden" id="r-correct"></p>
         <div class="points-pill" id="r-points"></div>
         <p id="r-rank" style="font-weight:800"></p>
       </div>
@@ -154,7 +161,7 @@
       </div>
     </section>
   </main>
-  <div class="footer hidden" id="footer"><span class="row" style="gap:8px"><span id="f-avatar"></span><span id="f-name"></span></span><span class="score" id="f-total">0</span></div>
+  <div class="footer hidden" id="footer"><span class="row" style="gap:8px"><span id="f-avatar"></span><span id="f-name"></span></span><span class="row" style="gap:8px"><span id="f-mute"></span><span class="score" id="f-total">0</span></span></div>
   <script type="module" src="/play.js"></script>
 </body>
 </html>

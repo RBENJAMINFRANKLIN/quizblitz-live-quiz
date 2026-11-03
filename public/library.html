@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My library · QuizBlitz</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    .wrap .card { width: 100%; }
+    .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .auth { max-width: 420px; margin: 24px auto; }
+    .auth .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px; }
+    .auth .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+    .auth label { display: flex; flex-direction: column; gap: 4px; font-weight: 800; font-size: 14px; color: var(--text-muted); }
+    .auth input { text-align: left; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+    .quiz { display: flex; flex-direction: column; gap: 10px; }
+    .quiz h3 { margin: 0; font-size: 20px; word-break: break-word; }
+    .quiz .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+    .quiz .actions .btn, .quiz .actions button { color: var(--text); }
+    .types { font-size: 20px; letter-spacing: 2px; }
+    .search { max-width: 360px; text-align: left; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="head">
+      <h1 class="logo" style="margin:0;font-size:36px">Quiz<span>Blitz</span> library</h1>
+      <div class="row" id="who"></div>
+    </div>
+
+    <section id="s-auth" data-screen class="hidden">
+      <div class="card auth stack">
+        <div class="tabs" role="tablist">
+          <button class="ghost small" role="tab" id="tab-login" aria-selected="true" type="button" style="color:var(--text)">Sign in</button>
+          <button class="ghost small" role="tab" id="tab-register" aria-selected="false" type="button" style="color:var(--text)">Create account</button>
+        </div>
+        <form class="stack" id="auth-form" novalidate>
+          <label class="hidden" id="name-row">Your name<input id="a-name" maxlength="40" autocomplete="name"></label>
+          <label>Email<input id="a-email" type="email" maxlength="200" autocomplete="email" required></label>
+          <label>Password<input id="a-pass" type="password" minlength="8" autocomplete="current-password" required></label>
+          <p class="error" id="auth-err" role="alert"></p>
+          <button class="accent" type="submit" id="auth-submit">Sign in</button>
+        </form>
+        <p class="sub" style="margin:0">Your quizzes and reports are saved to your account on this QuizBlitz server, so you can open them from any device that reaches it.</p>
+      </div>
+    </section>
+
+    <section id="s-list" data-screen class="hidden">
+      <div class="row" style="margin-bottom:16px">
+        <a class="btn accent" href="/host" id="btn-new">+ Create quiz</a>
+        <a class="btn ghost" href="/reports">📊 Reports</a>
+        <span class="grow"></span>
+        <input class="search" id="search" type="search" placeholder="Search your quizzes" aria-label="Search your quizzes">
+      </div>
+      <p class="error" id="list-err" role="alert" style="color:#ffb4b4"></p>
+      <div class="grid" id="quizzes"></div>
+    </section>
+  </main>
+  <script type="module" src="/library.js"></script>
+</body>
+</html>
