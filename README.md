@@ -68,6 +68,15 @@ Then on the computer that will be the big screen, open **http://localhost:3000/h
 > **private networks**, or phones won't be able to connect.
 > To use a different port: `$env:PORT=8080; npm start` (PowerShell).
 
+## Try it online (free demo on Render)
+
+Deploy your own copy in a few clicks: fork this repo, then on [Render](https://render.com) choose
+**New → Blueprint** and pick your fork. `render.yaml` sets everything up on the free plan.
+
+Free-plan notes: the app **sleeps after ~15 minutes idle** and takes about 30 seconds to wake up, and its
+database **resets when it restarts**, so accounts and saved quizzes are not permanent. Use a paid instance with a
+disk (or your own computer) for permanent storage.
+
 ## Question types
 
 | Type | Players… | Scoring |
