@@ -14,6 +14,8 @@ No npm dependencies: just **Node.js 22.13 or newer** (it uses Node's built-in SQ
 
 ## Demo
 
+**🚀 [Try it live](https://quizblitz-xy0p.onrender.com/host)** (free hosting: the first load can take ~30 seconds to wake up).
+
 **[▶ Watch a 2-minute game with every question type (MP4)](docs/media/quizblitz-all-types.mp4)**, recorded from the
 app running locally. The host screen is on the left and one player's phone is on the right.
 
