@@ -1,6 +1,6 @@
 # QuizBlitz
 
-A live, multiplayer quiz game in the style of Kahoot. The host shows questions on a big screen;
+A live, multiplayer quiz game in the style of Kahoot-type quiz apps. The host shows questions on a big screen;
 players join on their phones by **scanning a QR code or typing a 6-digit game PIN**.
 
 - **9 question types:** Quiz, True or false, Type answer, Slider, Puzzle, Drop pin, Poll, Word cloud, Open-ended
@@ -184,7 +184,7 @@ public/reports.*   reports page (summary, players, questions, CSV)
 public/sound.js    synthesised music and sound effects
 public/shared.js   API, clock-sync and DOM helpers
 public/sample/     image used by the sample drop-pin question
-EVIDENCE.md        how this design was derived from analysing Kahoot's player app
+EVIDENCE.md        what I learned studying how live quiz apps work
 ```
 
 ## Tests
@@ -198,3 +198,9 @@ With the server running (`npm start`), run `npm test`. It runs two API test suit
 ## Not built yet
 
 Team mode, player reactions/emotes, self-paced "assign" homework mode and public quiz discovery.
+
+## Disclaimer
+
+QuizBlitz is an independent, open-source learning project. It is **not affiliated with, endorsed by or
+connected to Kahoot!**. It contains no Kahoot code, audio, images, logos or branding; all code, music and sound
+effects are original. Kahoot! is a trademark of its owner.
