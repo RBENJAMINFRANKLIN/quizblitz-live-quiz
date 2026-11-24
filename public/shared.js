@@ -1,5 +1,21 @@
 // Shared helpers for host and player pages.
 
+// Public settings injected by the server into every page (single source of truth for the brand).
+let brandCache = null;
+export function brand() {
+  if (!brandCache) {
+    try { brandCache = JSON.parse(document.getElementById('brand-data')?.textContent || '{}'); } catch { brandCache = {}; }
+  }
+  return brandCache;
+}
+
+/** The configured logo, or the app name as a word mark. */
+export function logoEl(cls = 'brand-logo', dark = false) {
+  const b = brand();
+  const src = (dark && b.darkLogoUrl) || b.logoUrl;
+  return src ? el('img', { class: cls, src, alt: b.appName || '' }) : el('span', { class: `${cls} brand-wordmark` }, b.appName || '');
+}
+
 export const SHAPES = [
   '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 30 28H2z"/></svg>',          // triangle
   '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 1 31 16 16 31 1 16z"/></svg>',  // diamond

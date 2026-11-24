@@ -20,7 +20,7 @@ const POINTS = { standard: 1, double: 2, none: 0 };
 
 const str = (v, max) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const num = (v) => (typeof v === 'number' ? v : Number(v));
-const fail = (i, msg) => { throw new Error(`Question ${i + 1}: ${msg}`); };
+const fail = (i, msg) => { throw Object.assign(new Error(`Question ${i + 1}: ${msg}`), { status: 400 }); };
 
 // Canonical form for comparing typed answers: case, accents, punctuation and spacing ignored.
 function canon(s) {
@@ -81,10 +81,10 @@ function validateQuestion(qq, i) {
 }
 
 function validateQuiz(q) {
-  if (!q || typeof q !== 'object') throw new Error('Quiz is missing');
+  if (!q || typeof q !== 'object') throw Object.assign(new Error('Quiz is missing'), { status: 400 });
   const title = str(q.title, 80) || 'Untitled quiz';
-  if (!Array.isArray(q.questions) || q.questions.length === 0) throw new Error('Add at least one question');
-  if (q.questions.length > 100) throw new Error('Too many questions (max 100)');
+  if (!Array.isArray(q.questions) || q.questions.length === 0) throw Object.assign(new Error('Add at least one question'), { status: 400 });
+  if (q.questions.length > 100) throw Object.assign(new Error('Too many questions (max 100)'), { status: 400 });
   return { title, questions: q.questions.map(validateQuestion) };
 }
 

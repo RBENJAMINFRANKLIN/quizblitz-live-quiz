@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <!--BRAND_HEAD:Administration-->
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body class="admin">
+  <!-- Login -->
+  <main id="login" class="center hidden">
+    <div class="stack" style="align-items:center;width:100%">
+      <h1 class="logo">{{logo}}</h1>
+      <form class="card stack" id="login-form" autocomplete="on">
+        <h2 style="margin:0">Administration</h2>
+        <label class="field">E-mail<input id="login-email" type="email" autocomplete="username" required maxlength="200"></label>
+        <label class="field">Mot de passe<input id="login-pass" type="password" autocomplete="current-password" required maxlength="200"></label>
+        <button class="accent" type="submit">Se connecter</button>
+        <p class="error" id="login-err" role="alert"></p>
+      </form>
+      <a class="link" href="/">← Retour à l’accueil</a>
+    </div>
+  </main>
+
+  <!-- App -->
+  <div id="app" class="admin-shell hidden">
+    <aside class="admin-nav" id="nav">
+      <div class="admin-brand"><span class="logo">{{logo}}</span></div>
+      <nav aria-label="Administration">
+        <a href="#/dashboard" data-nav="dashboard">📊 Tableau de bord</a>
+        <p class="nav-group">Blind tests</p>
+        <a href="#/blindtests" data-nav="blindtests">🎵 Tous les blind tests</a>
+        <a href="#/blindtests/new" data-nav="new">➕ Nouveau blind test</a>
+        <a href="#/import" data-nav="import">📥 Importer</a>
+        <p class="nav-group">Parties</p>
+        <a href="#/games" data-nav="games">🎮 Parties en cours</a>
+        <a href="/reports" data-nav="history">🕘 Historique</a>
+        <p class="nav-group">Médias</p>
+        <a href="#/media/audio" data-nav="media-audio">🎧 Fichiers audio</a>
+        <a href="#/media/image" data-nav="media-image">🖼️ Images et logos</a>
+        <a href="#/media/favicon" data-nav="media-favicon">⭐ Favicons</a>
+        <p class="nav-group">Paramètres</p>
+        <a href="#/settings/general" data-nav="settings-general">⚙️ Général</a>
+        <a href="#/settings/appearance" data-nav="settings-appearance">🎨 Apparence</a>
+        <a href="#/settings/game" data-nav="settings-game">🏆 Jeu</a>
+      </nav>
+      <div class="nav-foot">
+        <span id="who" class="sub"></span>
+        <button class="ghost small" id="btn-logout" type="button">Déconnexion</button>
+      </div>
+    </aside>
+    <main class="admin-main">
+      <button class="ghost small nav-toggle" id="nav-toggle" type="button" aria-controls="nav">☰ Menu</button>
+      <div id="view" aria-live="polite"></div>
+    </main>
+  </div>
+  <div class="toast hidden" id="toast" role="status"></div>
+  <script type="module" src="/admin.js"></script>
+</body>
+</html>

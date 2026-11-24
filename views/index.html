@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!--BRAND_HEAD-->
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="center home">
+    <div class="stack" style="align-items:center;width:100%">
+      <div class="home-hero" id="home-hero"></div>
+      <h1 class="logo">{{logo}}</h1>
+      <p class="tagline">{{tagline}}</p>
+      <form class="card stack" id="pin-form" autocomplete="off">
+        <label class="sub" for="pin" style="text-align:center">Code PIN de la partie</label>
+        <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="PIN" required>
+        <button class="accent" type="submit">Rejoindre</button>
+        <p class="error" id="err" role="alert"></p>
+      </form>
+      <p class="welcome muted" id="welcome"></p>
+      <p class="muted organizer">{{organizerName}}</p>
+      <p class="muted small-links"><a class="link" href="/admin">Espace animateur</a></p>
+    </div>
+  </main>
+  <script type="module" src="/home.js"></script>
+</body>
+</html>

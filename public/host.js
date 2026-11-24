@@ -1,5 +1,6 @@
-import { SHAPES, api, el, show, countdown, stream, avatarEl } from '/shared.js';
+import { SHAPES, api, el, show, countdown, stream, avatarEl, serverTime, brand } from '/shared.js';
 import * as S from '/sound.js';
+import { ExcerptPlayer } from '/audio-player.js';
 
 const STORAGE_KEY = 'quizblitz.draft';
 const SESSION_KEY = 'quizblitz.hosting';
@@ -7,18 +8,18 @@ const OPTIONS_KEY = 'quizblitz.options';
 
 // [type, label, icon]; kept in the order Kahoot's "Add question" menu uses.
 const TYPES = [
-  ['quiz', 'Quiz', '🔷'], ['truefalse', 'True or false', '⚖️'], ['typeanswer', 'Type answer', '⌨️'],
-  ['slider', 'Slider', '🎚️'], ['puzzle', 'Puzzle', '🧩'], ['droppin', 'Drop pin', '📍'],
-  ['poll', 'Poll', '📊'], ['wordcloud', 'Word cloud', '☁️'], ['openended', 'Open-ended', '💬'],
+  ['quiz', 'Quiz', '🔷'], ['truefalse', 'Vrai ou faux', '⚖️'], ['typeanswer', 'Réponse à saisir', '⌨️'],
+  ['slider', 'Curseur', '🎚️'], ['puzzle', 'Remise en ordre', '🧩'], ['droppin', 'Épingle', '📍'],
+  ['poll', 'Sondage', '📊'], ['wordcloud', 'Nuage de mots', '☁️'], ['openended', 'Réponse libre', '💬'],
 ];
 const UNSCORED = new Set(['poll', 'wordcloud', 'openended']);
 const TIMES = [5, 10, 20, 30, 45, 60, 90, 120, 240];
 const OPTIONS = [
-  ['shuffleQuestions', 'Randomise question order', 'Questions are asked in a random order.', false],
-  ['shuffleAnswers', 'Randomise answer order', 'Answer options are shuffled for every question.', false],
-  ['nameGenerator', 'Friendly nickname generator', 'Players get a fun random name (they can spin for another) instead of typing one.', false],
-  ['lockOnStart', 'Lock the game when it starts', 'Nobody new can join once the first question begins.', true],
-  ['showOnDevices', "Show questions and answers on players' devices", 'Turn off to show only the coloured shapes on phones.', true],
+  ['shuffleQuestions', 'Ordre des questions aléatoire', 'Les questions sont posées dans un ordre aléatoire.', false],
+  ['shuffleAnswers', 'Ordre des réponses aléatoire', 'Les propositions sont mélangées à chaque question.', false],
+  ['nameGenerator', 'Générateur de pseudos', 'Les joueurs reçoivent un pseudo amusant (ils peuvent en tirer un autre) au lieu de le saisir.', false],
+  ['lockOnStart', 'Verrouiller au lancement', 'Plus personne ne peut rejoindre une fois la première question lancée.', true],
+  ['showOnDevices', 'Afficher questions et réponses sur les téléphones', 'Désactivez pour n’afficher que les formes de couleur sur les téléphones.', true],
 ];
 
 const SAMPLE = {
@@ -111,8 +112,8 @@ function questionCard(q, qi) {
         ...TYPES.map(([t, label, icon]) => opt(t, `${icon} ${label}`, q.type))),
       el('select', { 'aria-label': 'Time limit', onchange: (e) => { q.time = Number(e.target.value); saveDraft(); } },
         ...TIMES.map((s) => opt(s, s < 60 ? `${s} sec` : `${s / 60} min`, q.time))),
-      UNSCORED.has(q.type) ? el('span', { class: 'sub' }, 'No points') : el('select', { 'aria-label': 'Points', onchange: (e) => { q.points = e.target.value; saveDraft(); } },
-        opt('standard', 'Standard points', q.points), opt('double', 'Double points', q.points), opt('none', 'No points', q.points)),
+      UNSCORED.has(q.type) ? el('span', { class: 'sub' }, 'Sans points') : el('select', { 'aria-label': 'Points', onchange: (e) => { q.points = e.target.value; saveDraft(); } },
+        opt('standard', 'Points normaux', q.points), opt('double', 'Points doublés', q.points), opt('none', 'Sans points', q.points)),
       el('button', { class: 'small ghost', type: 'button', title: 'Move up', 'aria-label': 'Move up', disabled: qi === 0 ? '' : null, onclick: () => move(-1) }, '↑'),
       el('button', { class: 'small ghost', type: 'button', title: 'Move down', 'aria-label': 'Move down', disabled: qi === quiz.questions.length - 1 ? '' : null, onclick: () => move(1) }, '↓'),
       el('button', { class: 'small ghost', type: 'button', title: 'Duplicate', 'aria-label': 'Duplicate question',
@@ -121,9 +122,9 @@ function questionCard(q, qi) {
         onclick: () => { quiz.questions.splice(qi, 1); if (!quiz.questions.length) quiz.questions.push(blankQuestion()); saveDraft(); renderEditor(); } }, '✕')));
 
   return el('div', { class: 'card q-card' }, head,
-    input({ value: q.text, maxlength: '200', placeholder: 'Type your question', style: 'text-align:left', 'aria-label': `Question ${n} text` }, (v) => { q.text = v; }),
+    input({ value: q.text, maxlength: '200', placeholder: 'Saisissez votre question', style: 'text-align:left', 'aria-label': `Question ${n} text` }, (v) => { q.text = v; }),
     input({ type: 'url', value: q.image || '', maxlength: '500', style: 'text-align:left;font-size:14px;font-weight:600', 'aria-label': `Question ${n} image link`,
-      placeholder: q.type === 'droppin' ? 'Image link (required for drop pin), e.g. https://…/map.jpg' : 'Image link (optional), e.g. https://…/photo.jpg' },
+      placeholder: q.type === 'droppin' ? 'Lien de l’image (obligatoire), ex. https://…/carte.jpg' : 'Lien d’une image (facultatif), ex. https://…/photo.jpg' },
     (v) => { q.image = v.trim(); if (q.type === 'droppin') renderPinPreview(q, qi); }),
     ...typeEditor(q, qi));
 }
@@ -134,14 +135,14 @@ function typeEditor(q, qi) {
     case 'quiz': case 'poll':
       return q.choices.map((c, ci) => el('div', { class: 'choice-row' },
         el('div', { class: `swatch tile c${ci}`, html: SHAPES[ci], style: 'min-height:0;padding:0;box-shadow:none' }),
-        input({ type: 'text', value: c, maxlength: '80', placeholder: ci < 2 ? `Answer ${ci + 1}` : `Answer ${ci + 1} (optional)`, 'aria-label': `Question ${n} answer ${ci + 1}` },
+        input({ type: 'text', value: c, maxlength: '80', placeholder: ci < 2 ? `Réponse ${ci + 1}` : `Réponse ${ci + 1} (facultative)`, 'aria-label': `Question ${n} answer ${ci + 1}` },
           (v) => { q.choices[ci] = v; }),
         q.type === 'poll' ? null : el('label', {}, (() => {
           const box = el('input', { type: 'checkbox', 'aria-label': `Answer ${ci + 1} is correct`,
             onchange: (e) => { q.correct = e.target.checked ? [...new Set([...q.correct, ci])] : q.correct.filter((x) => x !== ci); saveDraft(); } });
           box.checked = q.correct.includes(ci);
           return box;
-        })(), 'Correct')));
+        })(), 'Correcte')));
     case 'truefalse':
       return [el('div', { class: 'tf-pick' }, ...['True', 'False'].map((label, i) => el('button', {
         type: 'button', class: `tile c${i}`, 'aria-pressed': String(q.correct[0] === i),
@@ -245,7 +246,7 @@ function cleanedQuiz() {
 document.getElementById('quiz-title').addEventListener('input', (e) => { quiz.title = e.target.value; saveDraft(); });
 document.getElementById('btn-add').addEventListener('click', () => { quiz.questions.push(blankQuestion()); saveDraft(); renderEditor(); });
 document.getElementById('btn-new').addEventListener('click', () => {
-  if (!confirm('Start a new, empty quiz? Unsaved changes to this quiz will be lost.')) return;
+  if (!confirm('Commencer un nouveau quiz vide ? Les modifications non enregistrées seront perdues.')) return;
   quiz = { title: '', questions: [blankQuestion()] }; saveDraft(); renderEditor(); dirty = false; setStatus('');
 });
 document.getElementById('btn-sample').addEventListener('click', () => { quiz = { ...structuredClone(SAMPLE), questions: SAMPLE.questions.map(withDefaults) }; saveDraft(); renderEditor(); });
@@ -267,22 +268,22 @@ importFile.addEventListener('change', async () => {
     saveDraft();
     renderEditor();
   } catch (ex) {
-    document.getElementById('edit-err').textContent = `Import failed: ${ex.message}`;
+    document.getElementById('edit-err').textContent = `Import impossible : ${ex.message}`;
   }
   importFile.value = '';
 });
 
 document.getElementById('btn-save').addEventListener('click', async () => {
-  if (!me) { setStatus('Sign in on the My library page to save quizzes to your account.'); return; }
+  if (!me) { setStatus('Connectez-vous depuis « Ma bibliothèque » pour enregistrer vos quiz.'); return; }
   try {
     const body = { quiz: cleanedQuiz() };
     if (quiz.libraryId) await api(`/api/quizzes/${quiz.libraryId}`, body, 'PUT');
     else quiz.libraryId = (await api('/api/quizzes', body)).id;
     saveDraft(false);
     dirty = false;
-    setStatus(`Saved to your library ✓ ${new Date().toLocaleTimeString()}`);
+    setStatus(`Enregistré dans votre bibliothèque ✓ ${new Date().toLocaleTimeString('fr-FR')}`);
   } catch (ex) {
-    setStatus(`Not saved: ${ex.message}`);
+    setStatus(`Non enregistré : ${ex.message}`);
   }
 });
 
@@ -291,9 +292,9 @@ async function renderAccount() {
   try { me = (await api('/api/auth/me')).user; } catch { me = null; }
   if (me) {
     bar.replaceChildren(el('span', { style: 'font-weight:800' }, `👤 ${me.name}`),
-      el('button', { class: 'ghost small', type: 'button', onclick: async () => { await api('/api/auth/logout', {}); renderAccount(); } }, 'Sign out'));
+      el('button', { class: 'ghost small', type: 'button', onclick: async () => { await api('/api/auth/logout', {}); renderAccount(); } }, 'Déconnexion'));
   } else {
-    bar.replaceChildren(el('a', { class: 'btn ghost small', href: '/library' }, 'Sign in to save quizzes online'));
+    bar.replaceChildren(el('a', { class: 'btn ghost small', href: '/library' }, 'Se connecter pour enregistrer'));
   }
   document.getElementById('btn-save').classList.toggle('hidden', !me);
 }
@@ -317,6 +318,72 @@ document.getElementById('btn-host').addEventListener('click', async () => {
 let pin, hostKey, stopTimer = () => {};
 let lastPhase = '';
 let lastPlayerCount = 0;
+let lastMsg = null;     // latest STATE snapshot
+let isBlindGame = false;
+let soundBlocked = false;
+const $ = (id) => document.getElementById(id);
+
+const player = new ExcerptPlayer({
+  onState: (st) => {
+    $('c-stop').disabled = st !== 'playing';
+    if (st === 'playing') { $('c-audio-err').textContent = ''; soundBlocked = false; }
+    if (st === 'blocked') { soundBlocked = true; $('sound-gate').classList.remove('hidden'); }
+    document.querySelectorAll('.eq').forEach((e) => e.classList.toggle('paused', st !== 'playing'));
+  },
+  onError: (text) => { $('c-audio-err').textContent = `🔇 ${text}`; },
+  onProgress: (frac) => { const bar = $('q-audio-bar').firstElementChild; if (bar) bar.style.width = `${frac * 100}%`; },
+});
+// Keep the screens clear of the fixed control bar, whatever its height (it wraps on narrow screens).
+new ResizeObserver(() => document.body.style.setProperty('--ctrl-h', `${$('ctrl').offsetHeight}px`)).observe($('ctrl'));
+$('c-volume').value = String(player.master);
+$('c-volume').addEventListener('input', (e) => player.setVolume(Number(e.target.value)));
+
+const STATE_LABELS = { LOBBY: 'Lobby', GET_READY: 'Compte à rebours', QUESTION: 'Réponses ouvertes', REVEAL: 'Révélation', SCOREBOARD: 'Classement', ENDED: 'Fin de partie' };
+
+/** Starts (or re-syncs) the excerpt for the current track from the server's opening time. */
+function syncAudio(msg, fresh) {
+  const b = msg.blind;
+  if (!b || !b.audioUrl) return;
+  if (msg.state === 'QUESTION') {
+    const offset = Math.max(0, (serverTime() - msg.openedAt) / 1000);
+    const same = player.excerpt && player.excerpt.url === b.audioUrl;
+    if (msg.paused) { if (same) player.pause(); else player.stop(); return; }
+    if (fresh || !same || player.state === 'idle' || player.state === 'error') { player.play(b.audioUrl, b.startTime, b.duration, offset); return; }
+    if (player.state === 'paused') player.resume();
+  }
+}
+
+function renderCtrl(msg) {
+  const inGame = !['LOBBY', 'ENDED'].includes(msg.state) && $('s-edit').classList.contains('hidden');
+  $('ctrl').classList.toggle('hidden', !inGame);
+  document.body.classList.toggle('has-ctrl', inGame);
+  const label = msg.paused ? 'Pause' : (isBlindGame && msg.state === 'QUESTION' ? 'Lecture · réponses ouvertes' : STATE_LABELS[msg.state] || msg.state);
+  $('c-state').textContent = label;
+  const players = msg.players || [];
+  $('c-players').textContent = `👥 ${msg.connectedCount ?? players.filter((p) => p.connected).length}/${players.length}`;
+  if (msg.state === 'QUESTION') $('c-answers').textContent = `✉ ${msg.answeredCount ?? 0}`;
+  const pausable = msg.state === 'GET_READY' || msg.state === 'QUESTION';
+  $('c-pause').disabled = !pausable;
+  $('c-pause').textContent = msg.paused ? '▶ Reprendre' : '⏸ Pause';
+  $('c-restart').disabled = !pausable;
+  $('c-close').disabled = !pausable;
+  $('c-stop').classList.toggle('hidden', !isBlindGame);
+  $('c-volume').parentElement.classList.toggle('hidden', !isBlindGame);
+}
+
+function moveBadge(p) {
+  if (!p.prevRank || p.prevRank === p.rank) return el('span', { class: 'move' }, '•');
+  const up = p.prevRank > p.rank;
+  return el('span', { class: `move ${up ? 'up' : 'down'}`, title: up ? 'Gagne des places' : 'Perd des places' }, `${up ? '▲' : '▼'}${Math.abs(p.prevRank - p.rank)}`);
+}
+
+function trackCard(rv) {
+  return el('div', { class: 'track-card pop' },
+    rv.coverUrl ? el('img', { src: rv.coverUrl, alt: '', referrerpolicy: 'no-referrer' }) : el('div', { class: 'eq', 'aria-hidden': 'true' }, ...Array.from({ length: 6 }, () => el('span'))),
+    el('div', {}, el('p', { class: 't-title' }, rv.title), el('p', { class: 't-artist' }, rv.artist), rv.year ? el('span', { class: 't-year' }, rv.year) : null));
+}
+
+const roundText = (b) => `${b.roundTitle} · Manche ${b.roundIndex + 1}/${b.roundCount} · Morceau ${b.trackInRound + 1}/${b.tracksInRound}`;
 
 async function startHosting(p, key) {
   pin = p;
@@ -325,7 +392,11 @@ async function startHosting(p, key) {
   document.getElementById('mute-lobby').replaceChildren(S.muteButton());
   document.getElementById('mute-q').replaceChildren(S.muteButton());
   await setupJoinInfo();
-  stream(`/api/games/${pin}/host-events?key=${encodeURIComponent(hostKey)}`, onMessage);
+  stream(`/api/games/${pin}/host-events?key=${encodeURIComponent(hostKey)}`, onMessage, (ok) => {
+    $('c-live').classList.toggle('live', ok);
+    $('c-live').classList.toggle('off', !ok);
+    $('c-live').textContent = ok ? 'Temps réel' : 'Reconnexion…';
+  });
 }
 
 async function setupJoinInfo() {
@@ -333,6 +404,7 @@ async function setupJoinInfo() {
   const select = document.getElementById('url-choice');
   try {
     const info = await api('/api/info');
+    if (info.publicUrl) { renderJoin(info.publicUrl); return; }
     const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
     // Phones can't reach "localhost", so share this computer's Wi-Fi address instead.
     if (isLocal && info.lanUrls.length) {
@@ -357,7 +429,7 @@ function renderJoin(base) {
     // eslint-disable-next-line no-new
     new window.QRCode(qr, { text: joinUrl, width: 216, height: 216, correctLevel: window.QRCode.CorrectLevel.M });
   } else {
-    qr.append(el('p', { style: 'color:#1c1530;font-weight:700;padding:8px;text-align:center' }, 'QR unavailable offline. Share the address and PIN.'));
+    qr.append(el('p', { style: 'color:#1c1530;font-weight:700;padding:8px;text-align:center' }, 'QR code indisponible hors ligne. Communiquez l’adresse et le PIN.'));
   }
 }
 
@@ -366,15 +438,15 @@ function renderPlayers(players) {
   lastPlayerCount = players.length;
   document.getElementById('player-count').textContent = players.length;
   document.getElementById('btn-start').disabled = players.length === 0;
-  document.getElementById('lobby-hint').textContent = players.length ? '' : 'Waiting for players…';
+  document.getElementById('lobby-hint').textContent = players.length ? `${players.length} joueur${players.length > 1 ? 's' : ''} · En attente du lancement` : 'En attente des joueurs…';
   document.getElementById('players').replaceChildren(...players.map((p) =>
     el('span', { class: `chip pop${p.connected ? '' : ' off'}` }, avatarEl(p.avatar, 40), p.name,
-      el('button', { title: `Remove ${p.name}`, 'aria-label': `Remove ${p.name}`, onclick: () => hostAction('kick', { playerId: p.id }) }, '✕'))));
+      el('button', { title: `Retirer ${p.name}`, 'aria-label': `Retirer ${p.name}`, onclick: () => hostAction('kick', { playerId: p.id }) }, '✕'))));
 }
 
 function renderLock(locked) {
   const b = document.getElementById('btn-lock');
-  b.textContent = locked ? '🔒 Unlock' : '🔓 Lock';
+  b.textContent = locked ? '🔒 Déverrouiller' : '🔓 Verrouiller';
   b.setAttribute('aria-pressed', String(!!locked));
   document.getElementById('locked-banner').classList.toggle('hidden', !locked);
 }
@@ -394,6 +466,11 @@ function setTimerRing(node, secs, frac) {
 // Question image, or the four answer shapes as a placeholder illustration.
 function renderMedia(q) {
   const box = document.getElementById('q-media');
+  if (isBlindGame) {
+    box.replaceChildren(el('div', { class: 'blind-visual', 'aria-hidden': 'true' }, el('span', { class: 'note' }, '🎵'),
+      el('div', { class: `eq${player.state === 'playing' ? '' : ' paused'}` }, ...Array.from({ length: 9 }, () => el('span')))));
+    return;
+  }
   if (q.image) {
     const img = el('img', { src: q.image, alt: '', referrerpolicy: 'no-referrer' });
     img.onerror = () => box.replaceChildren(shapesArt(q.choices ? q.choices.length : 4));
@@ -411,11 +488,11 @@ const prompt = (text) => el('div', { class: 'prompt-box' }, text);
 function questionBody(q) {
   switch (q.type) {
     case 'quiz': case 'truefalse': case 'poll': return choiceTiles(q);
-    case 'typeanswer': return [prompt('⌨️ Type your answer on your device')];
-    case 'wordcloud': return [prompt('☁️ Type a word or two on your device')];
-    case 'openended': return [prompt('💬 Type your answer on your device')];
-    case 'slider': return [prompt(`🎚️ Pick a number between ${q.min} and ${q.max}${q.unit ? ` ${q.unit}` : ''} on your device`)];
-    case 'droppin': return [prompt('📍 Drop a pin on the image on your device')];
+    case 'typeanswer': return [prompt('⌨️ Saisissez votre réponse sur votre téléphone')];
+    case 'wordcloud': return [prompt('☁️ Saisissez un ou deux mots sur votre téléphone')];
+    case 'openended': return [prompt('💬 Saisissez votre réponse sur votre téléphone')];
+    case 'slider': return [prompt(`🎚️ Choisissez un nombre entre ${q.min} et ${q.max}${q.unit ? ` ${q.unit}` : ''} sur votre téléphone`)];
+    case 'droppin': return [prompt('📍 Placez une épingle sur l’image depuis votre téléphone')];
     case 'puzzle': return q.items.map((it, i) => el('div', { class: `tile c${i}` }, el('span', { html: SHAPES[i] }), el('span', {}, it.text)));
     default: return [];
   }
@@ -430,16 +507,19 @@ function revealViews(q, r) {
   switch (r.type) {
     case 'quiz': case 'truefalse': case 'poll': {
       const max = Math.max(1, ...r.counts);
-      const bars = el('div', { class: 'bars' }, ...r.counts.map((n, i) => el('div', { class: 'bar' },
+      const bars = el('div', { class: 'bars', style: isBlindGame ? 'max-height:180px' : '' }, ...r.counts.map((n, i) => el('div', { class: 'bar' },
         el('span', {}, n),
         el('div', { class: `fill tile c${i}${r.correct.length && !r.correct.includes(i) ? ' dim' : ''}`, style: `height:${(n / max) * 80 + 4}%;padding:0;min-height:6px` }),
         el('span', { class: 'label', html: SHAPES[i] + (r.correct.includes(i) ? ' ✔' : '') }))));
+      if (isBlindGame && lastMsg?.blind?.reveal) {
+        return [el('div', { class: 'stack', style: 'align-items:center;width:100%' }, trackCard(lastMsg.blind.reveal), bars), choiceTiles(q, { correct: r.correct })];
+      }
       return [bars, choiceTiles(q, { correct: r.correct })];
     }
     case 'typeanswer':
-      return [none ? prompt('No answers') : el('div', { class: 'resp-list' }, ...r.responses.map((x) => el('div', {},
+      return [none ? prompt('Aucune réponse') : el('div', { class: 'resp-list' }, ...r.responses.map((x) => el('div', {},
         el('span', { class: x.correct ? 'ok' : 'no' }, `${x.correct ? '✔' : '✖'} ${x.text}`), el('span', {}, `×${x.count}`)))),
-      [prompt(`Correct answer: ${r.accepted.join(' / ')}`)]];
+      [prompt(`Bonne réponse : ${r.accepted.join(' / ')}`)]];
     case 'slider': {
       const lo = Math.max(r.min, r.answer - r.tolerance); const hi = Math.min(r.max, r.answer + r.tolerance);
       const line = el('div', { class: 'numline' }, el('div', { class: 'track' },
@@ -447,12 +527,12 @@ function revealViews(q, r) {
         ...r.values.map((v) => el('span', { class: 'dot', style: `left:${pct(v, r)}` })),
         el('span', { class: 'mark', style: `left:${pct(r.answer, r)}` }, `${r.answer} ✔`)),
       el('div', { class: 'ends' }, el('span', {}, `${r.min}`), el('span', {}, `${r.max}${r.unit ? ` ${r.unit}` : ''}`)));
-      const avg = r.average === null ? '' : ` · average answer ${Math.round(r.average * 10) / 10}`;
-      return [line, [prompt(`Correct answer: ${r.answer}${r.unit ? ` ${r.unit}` : ''}${r.tolerance ? ` (±${r.tolerance})` : ''}${avg}`)]];
+      const avg = r.average === null ? '' : ` · réponse moyenne ${Math.round(r.average * 10) / 10}`;
+      return [line, [prompt(`Bonne réponse : ${r.answer}${r.unit ? ` ${r.unit}` : ''}${r.tolerance ? ` (±${r.tolerance})` : ''}${avg}`)]];
     }
     case 'puzzle':
       return [el('ol', { class: 'order-list' }, ...r.order.map((t, i) => el('li', { class: `tile c${i}`, style: 'min-height:0' }, el('span', { class: 'num' }, i + 1), t))),
-        [prompt(`${r.correctCount} of ${r.answeredCount} player${r.answeredCount === 1 ? '' : 's'} got the order right`)]];
+        [prompt(`${r.correctCount} joueur(s) sur ${r.answeredCount} ont trouvé le bon ordre`)]];
     case 'droppin': {
       const map = el('div', { class: 'pinmap' }, el('img', { src: q.image, alt: '', referrerpolicy: 'no-referrer' }));
       const img = map.querySelector('img');
@@ -463,24 +543,24 @@ function revealViews(q, r) {
       };
       img.onload = draw;
       const inside = r.pins.filter((p) => p.correct).length;
-      return [map, [prompt(`${inside} of ${r.answeredCount} pin${r.answeredCount === 1 ? '' : 's'} landed in the right area 📍`)]];
+      return [map, [prompt(`${inside} épingle(s) sur ${r.answeredCount} dans la bonne zone 📍`)]];
     }
     case 'wordcloud': {
       const max = Math.max(1, ...r.responses.map((x) => x.count));
-      return [none ? prompt('No answers') : el('div', { class: 'cloud' }, ...r.responses.map((x, i) => el('span', {
+      return [none ? prompt('Aucune réponse') : el('div', { class: 'cloud' }, ...r.responses.map((x, i) => el('span', {
         style: `font-size:${20 + (x.count / max) * 52}px;color:${COLORS[i % COLORS.length]}`, title: `${x.count} × ${x.text}` }, x.text))), []];
     }
     case 'openended':
-      return [none ? prompt('No answers') : el('div', { class: 'resp-list' }, ...r.responses.map((x) => el('div', {}, el('span', {}, x.text), x.count > 1 ? el('span', {}, `×${x.count}`) : null))), []];
+      return [none ? prompt('Aucune réponse') : el('div', { class: 'resp-list' }, ...r.responses.map((x) => el('div', {}, el('span', {}, x.text), x.count > 1 ? el('span', {}, `×${x.count}`) : null))), []];
     default: return [prompt(''), []];
   }
 }
 
 function boardRow(p, delayMs = 0) {
   return el('li', { style: `animation-delay:${delayMs}ms` },
-    el('span', {}, p.rank), avatarEl(p.avatar, 44),
+    el('span', {}, p.rank), moveBadge(p), avatarEl(p.avatar, 44),
     el('span', { class: 'name' }, `${p.name}${p.streak >= 2 ? ` 🔥${p.streak}` : ''}`),
-    el('span', {}, p.score.toLocaleString()));
+    el('span', {}, p.score.toLocaleString('fr-FR')));
 }
 
 // ---------- podium: staged reveal, 3rd -> 2nd -> drumroll -> 1st ----------
@@ -497,7 +577,7 @@ function playPodium(lb) {
     if (!p) return null;
     const av = avatarEl(p.avatar, 96);
     const slot = el('div', { class: `slot ${cls}` },
-      el('div', { class: 'who' }, av, el('span', {}, p.name), el('span', { class: 'score' }, `${p.score.toLocaleString()} pts`)),
+      el('div', { class: 'who' }, av, el('span', {}, p.name), el('span', { class: 'score' }, `${p.score.toLocaleString('fr-FR')} pts`)),
       el('div', { class: 'step' }, place));
     return { slot, av, place };
   });
@@ -517,7 +597,7 @@ function playPodium(lb) {
   };
   at(800, () => { reveal('3'); S.getReadyBeep(); });
   at(2600, () => { reveal('2'); S.getReadyBeep(); });
-  at(4400, () => { drum.textContent = 'And the winner is…'; drum.classList.add('on'); spot.classList.add('on'); S.drumroll(1.8); });
+  at(4400, () => { drum.textContent = 'Et le grand gagnant est…'; drum.classList.add('on'); spot.classList.add('on'); S.drumroll(1.8); });
   at(6200, () => { reveal('1'); drum.classList.remove('on'); S.fanfare(); });
   at(6900, () => { if (!reduce && lb[0]) confetti(); });
   at(8200, () => { spot.classList.remove('on'); runners.classList.add('on'); });
@@ -539,10 +619,15 @@ let lastLeaderboard = [];
 document.getElementById('btn-replay').addEventListener('click', () => { S.unlock(); playPodium(lastLeaderboard); });
 
 function onMessage(msg) {
-  if (msg.type === 'PLAYERS') return renderPlayers(msg.players);
+  if (msg.type === 'PLAYERS') {
+    renderPlayers(msg.players);
+    if (lastMsg) { lastMsg = { ...lastMsg, players: msg.players, connectedCount: msg.connectedCount }; renderCtrl(lastMsg); }
+    return;
+  }
   if (msg.type === 'ANSWER_COUNT') {
     const n = document.getElementById('q-answers');
     n.textContent = msg.answeredCount;
+    $('c-answers').textContent = `✉ ${msg.answeredCount}`;
     n.classList.remove('pop'); void n.offsetWidth; n.classList.add('pop'); // bump animation
     return;
   }
@@ -550,25 +635,34 @@ function onMessage(msg) {
 
   stopTimer();
   const q = msg.question;
-  const phase = `${msg.state}:${q ? q.index : ''}`;
+  // A restarted track goes back to GET_READY with the same index: the start time makes it a new phase.
+  const phase = `${msg.state}:${q ? q.index : ''}:${msg.startsAt || ''}`;
   const isNewPhase = phase !== lastPhase; // snapshots repeat on reconnect; only play sounds once
   lastPhase = phase;
+  lastMsg = msg;
+  isBlindGame = msg.kind === 'music-blind-test';
   if (msg.players) renderPlayers(msg.players);
   renderLock(msg.locked);
+  const blind = msg.blind;
+  for (const id of ['ready-round', 'q-round']) { $(id).classList.toggle('hidden', !blind); $(id).textContent = blind ? roundText(blind) : ''; }
+  $('q-audio-bar').classList.toggle('hidden', !blind);
+  if (blind && blind.nextAudioUrl && msg.state !== 'LOBBY') player.preload(blind.nextAudioUrl, blind.nextStartTime);
 
   switch (msg.state) {
     case 'LOBBY':
       document.getElementById('lobby-title').textContent = msg.title;
       if (isNewPhase) S.lobbyMusic();
+      if (blind) player.preload(blind.audioUrl, blind.startTime);
       show('s-lobby');
       break;
     case 'GET_READY': {
-      if (isNewPhase) S.stopMusic();
-      document.getElementById('ready-num').textContent = `Question ${q.index + 1} of ${q.total}`;
+      if (isNewPhase) { S.stopMusic(); if (blind) { player.stop(); player.preload(blind.audioUrl, blind.startTime); } }
+      document.getElementById('ready-num').textContent = blind ? `Morceau ${q.index + 1} sur ${q.total}` : `Question ${q.index + 1} sur ${q.total}`;
       document.getElementById('ready-text').textContent = q.text;
       const ring = document.getElementById('ready-timer');
       let lastSec = null;
-      stopTimer = countdown(msg.startsAt, 4000, (s, f) => {
+      if (msg.paused) setTimerRing(ring, Math.ceil(msg.paused.remainingMs / 1000), msg.paused.remainingMs / (msg.readyMs || 4000));
+      else stopTimer = countdown(msg.startsAt, msg.readyMs || 4000, (s, f) => {
         setTimerRing(ring, s, f);
         if (s !== lastSec) { if (lastSec !== null || isNewPhase) S.getReadyBeep(s === 0); lastSec = s; }
       });
@@ -576,12 +670,13 @@ function onMessage(msg) {
       break;
     }
     case 'QUESTION': {
-      if (isNewPhase) S.questionMusic();
-      document.getElementById('q-num').textContent = `Question ${q.index + 1} of ${q.total}`;
+      if (isNewPhase && !blind) S.questionMusic();
+      if (blind) syncAudio(msg, isNewPhase);
+      document.getElementById('q-num').textContent = blind ? `Morceau ${q.index + 1} sur ${q.total}` : `Question ${q.index + 1} sur ${q.total}`;
       document.getElementById('q-pin').textContent = msg.pin;
       const tag = document.getElementById('q-points');
       tag.classList.toggle('hidden', q.points === 'standard' || ['poll', 'wordcloud', 'openended'].includes(q.type));
-      tag.textContent = q.points === 'double' ? '2× points' : 'No points';
+      tag.textContent = q.points === 'double' ? '2× points' : 'Sans points';
       document.getElementById('q-text').textContent = q.text;
       document.getElementById('q-answers').textContent = msg.answeredCount;
       document.getElementById('q-choices').replaceChildren(...questionBody(q));
@@ -589,19 +684,23 @@ function onMessage(msg) {
       const ring = document.getElementById('q-timer');
       const bar = document.getElementById('q-bar');
       let lastSec = null;
-      stopTimer = countdown(msg.endsAt, q.time * 1000, (s, f) => {
+      if (msg.paused) {
+        const f = msg.paused.remainingMs / (q.time * 1000);
+        setTimerRing(ring, Math.ceil(msg.paused.remainingMs / 1000), f);
+        bar.style.transform = `scaleX(${f})`;
+      } else stopTimer = countdown(msg.endsAt, q.time * 1000, (s, f) => {
         setTimerRing(ring, s, f);
         bar.style.transform = `scaleX(${f})`;
         ring.classList.toggle('urgent', s <= 5);
-        if (s !== lastSec) { S.questionSecond(s); lastSec = s; }
+        if (s !== lastSec) { if (!blind) S.questionSecond(s); lastSec = s; }
       });
       show('s-question');
       break;
     }
     case 'REVEAL': {
-      if (isNewPhase) { S.timeUp(); setTimeout(S.reveal, 700); }
+      if (isNewPhase) { if (blind) S.reveal(); else { S.timeUp(); setTimeout(S.reveal, 700); } }
       const r = msg.reveal;
-      document.getElementById('r-num').textContent = `Question ${q.index + 1} of ${q.total}`;
+      document.getElementById('r-num').textContent = blind ? `Morceau ${q.index + 1} sur ${q.total}` : `Question ${q.index + 1} sur ${q.total}`;
       document.getElementById('r-pin').textContent = msg.pin;
       document.getElementById('r-answers').textContent = r.answeredCount;
       document.getElementById('r-text').textContent = q.text;
@@ -612,13 +711,15 @@ function onMessage(msg) {
       break;
     }
     case 'SCOREBOARD':
-      if (isNewPhase) S.scoreboard();
-      document.getElementById('btn-next-q').textContent = q && q.index + 1 >= q.total ? 'Final results ▶' : 'Next ▶';
+      if (isNewPhase) { S.scoreboard(); if (blind) player.fadeStop(1.5); }
+      document.getElementById('btn-next-q').textContent = q && q.index + 1 >= q.total ? 'Résultats finaux ▶' : (blind ? 'Morceau suivant ▶' : 'Suivant ▶');
       document.getElementById('board').replaceChildren(...msg.leaderboard.map((p, i) => boardRow(p, i * 90)));
       show('s-board');
       break;
     case 'ENDED': {
       S.stopMusic();
+      player.stop();
+      $('btn-back').href = isBlindGame ? '/admin#/games' : '/host';
       document.getElementById('end-title').textContent = msg.title;
       lastLeaderboard = msg.leaderboard;
       const reportLink = document.getElementById('btn-report');
@@ -631,10 +732,12 @@ function onMessage(msg) {
       break;
     }
   }
+  renderCtrl(msg);
 }
 
 async function hostAction(action, extra = {}) {
   S.unlock();
+  player.unlock();
   try { await api(`/api/games/${pin}/host-action`, { key: hostKey, action, ...extra }); }
   catch (ex) { alert(ex.message); }
 }
@@ -644,6 +747,21 @@ document.getElementById('btn-lock').addEventListener('click', (e) => hostAction(
 document.getElementById('btn-skip').addEventListener('click', () => hostAction('skip'));
 document.getElementById('btn-to-board').addEventListener('click', () => hostAction('next'));
 document.getElementById('btn-next-q').addEventListener('click', () => hostAction('next'));
+document.getElementById('btn-hide-board').addEventListener('click', () => hostAction('hide-board'));
+$('c-pause').addEventListener('click', () => hostAction(lastMsg?.paused ? 'resume' : 'pause'));
+$('c-restart').addEventListener('click', () => { if (confirm('Relancer ce morceau depuis le compte à rebours ? Les réponses déjà données à ce morceau seront annulées.')) hostAction('restart-track'); });
+$('c-stop').addEventListener('click', () => player.fadeStop(0.6));
+$('c-close').addEventListener('click', () => hostAction('skip'));
+$('c-recover').addEventListener('click', () => { hostAction('recover'); if (lastMsg) syncAudio(lastMsg, true); });
+$('c-end').addEventListener('click', () => { if (confirm('Terminer la partie maintenant ? Le classement actuel deviendra le classement final.')) hostAction('end'); });
+$('ctrl-toggle').addEventListener('click', () => $('ctrl').classList.toggle('collapsed'));
+$('btn-sound-gate').addEventListener('click', () => {
+  S.unlock();
+  player.unlocked = false;
+  player.unlock();
+  $('sound-gate').classList.add('hidden');
+  if (lastMsg) syncAudio(lastMsg, true);
+});
 // Resumed games start muted until the host clicks anywhere (browser autoplay rules).
 document.addEventListener('click', () => S.unlock(), { once: true });
 
@@ -657,7 +775,11 @@ document.addEventListener('click', () => S.unlock(), { once: true });
     const urlPin = new URLSearchParams(location.search).get('pin');
     if (saved && saved.pin && (!urlPin || urlPin === saved.pin)) {
       api(`/api/games/${saved.pin}`)
-        .then(() => startHosting(saved.pin, saved.hostKey))
+        .then((game) => {
+          // After a refresh the browser blocks audio until a click: ask for one if the excerpt should be playing.
+          if (game.kind === 'music-blind-test' && game.state !== 'LOBBY' && game.state !== 'ENDED') $('sound-gate').classList.remove('hidden');
+          return startHosting(saved.pin, saved.hostKey);
+        })
         .catch(() => { sessionStorage.removeItem(SESSION_KEY); history.replaceState(null, '', '/host'); renderEditor(); show('s-edit'); });
       return;
     }
@@ -672,9 +794,9 @@ document.addEventListener('click', () => S.unlock(), { once: true });
       quiz = { title: saved.quiz.title, libraryId: saved.id, questions: saved.quiz.questions.map(withDefaults) };
       saveDraft(false);
       dirty = false;
-      setStatus(`Editing "${saved.title}" from your library`);
+      setStatus(`Modification de « ${saved.title} » depuis votre bibliothèque`);
     } catch (ex) {
-      setStatus(`Could not open that quiz: ${ex.message}`);
+      setStatus(`Impossible d’ouvrir ce quiz : ${ex.message}`);
     }
     history.replaceState(null, '', '/host');
     renderEditor();

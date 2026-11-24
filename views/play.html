@@ -1,10 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#2b1a5e">
-  <title>Play · QuizBlitz</title>
+  <!--BRAND_HEAD:Jouer-->
   <link rel="stylesheet" href="/style.css">
   <style>
     body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
@@ -18,6 +17,10 @@
     .footer .score { background: var(--text); color: #fff; padding: 4px 12px; border-radius: 6px; }
     .offline { background: var(--bad); color: #fff; text-align: center; font-weight: 700; padding: 6px; }
     .footer { padding: 6px 16px; }
+    .topbar-brand { opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; }
+    .round-tag { margin: 0; text-align: center; font-weight: 800; color: var(--on-bg-muted); }
+    .r-track { background: rgba(0,0,0,.25); border-radius: 10px; padding: 8px 14px; font-weight: 800; margin: 0; }
+    .paused-banner { background: var(--highlight); color: var(--highlight-ink); text-align: center; font-weight: 900; padding: 6px; }
     #f-medal { position: relative; display: inline-block; }
     #f-medal .medal { position: absolute; right: -14px; bottom: -6px; font-size: 52px; }
     .picker { display: flex; flex-direction: column; gap: 12px; padding: 16px; max-width: 520px; margin: 0 auto; width: 100%; }
@@ -35,16 +38,17 @@
   </style>
 </head>
 <body>
-  <div class="offline hidden" id="offline" role="status">Reconnecting…</div>
-  <div class="topbar hidden" id="topbar"><span>PIN: <span id="t-pin"></span></span><span id="t-progress"></span></div>
+  <div class="paused-banner hidden" id="paused" role="status">⏸ Partie en pause</div>
+  <div class="offline hidden" id="offline" role="status">Connexion perdue, reconnexion…</div>
+  <div class="topbar hidden" id="topbar"><span class="topbar-brand">{{shortName}}</span><span>PIN <span id="t-pin"></span></span><span id="t-progress"></span></div>
   <main>
     <!-- PIN -->
     <section id="s-pin" data-screen class="center">
       <div class="stack" style="align-items:center;width:100%">
-        <h1 class="logo">Quiz<span>Blitz</span></h1>
+        <h1 class="logo">{{logo}}</h1>
         <form class="card stack" id="pin-form" autocomplete="off">
-          <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Game PIN" aria-label="Game PIN" required>
-          <button class="accent" type="submit">Enter</button>
+          <input id="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Code PIN" aria-label="Code PIN de la partie" required>
+          <button class="accent" type="submit">Valider</button>
           <p class="error" id="pin-err" role="alert"></p>
         </form>
       </div>
@@ -53,15 +57,15 @@
     <!-- Nickname -->
     <section id="s-name" data-screen class="center hidden">
       <div class="stack" style="align-items:center;width:100%">
-        <h1 class="logo">Quiz<span>Blitz</span></h1>
+        <h1 class="logo">{{logo}}</h1>
         <form class="card stack" id="name-form" autocomplete="off">
-          <input id="name" maxlength="15" placeholder="Nickname" aria-label="Nickname" required autocapitalize="words">
+          <input id="name" maxlength="15" placeholder="Votre pseudo" aria-label="Pseudo" required minlength="2" autocapitalize="words">
           <div class="stack hidden" id="gen-box" style="align-items:center">
-            <p class="sub" style="margin:0">Your nickname</p>
+            <p class="sub" style="margin:0">Votre pseudo</p>
             <p class="big" id="gen-name" style="color:var(--text);font-size:30px" aria-live="polite"></p>
-            <button class="ghost small" type="button" id="btn-spin" style="color:var(--text)"><span>🎲 Spin for another (<span id="spins">3</span> left)</span></button>
+            <button class="ghost small" type="button" id="btn-spin" style="color:var(--text)"><span>🎲 Un autre (<span id="spins">3</span> restants)</span></button>
           </div>
-          <button class="accent" type="submit">OK, go!</button>
+          <button class="accent" type="submit">C’est parti !</button>
           <p class="error" id="name-err" role="alert"></p>
         </form>
       </div>
@@ -71,9 +75,9 @@
     <section id="s-lobby" data-screen class="center hidden">
       <div class="stack" style="align-items:center">
         <div id="lobby-avatar" class="pop"></div>
-        <p class="big">You're in!</p>
-        <p class="muted">See your nickname on screen?</p>
-        <button class="accent" id="btn-edit-avatar" type="button">Change avatar</button>
+        <p class="big">Vous êtes dans la partie !</p>
+        <p class="muted">Votre pseudo s’affiche sur l’écran principal.</p><p class="muted" id="lobby-title"></p>
+        <button class="accent" id="btn-edit-avatar" type="button">Changer d’avatar</button>
       </div>
     </section>
 
@@ -82,11 +86,11 @@
       <div class="picker">
         <div class="picker-preview" id="pick-preview"></div>
         <div class="tabs" role="tablist">
-          <button role="tab" type="button" id="tab-char" aria-selected="true">Character</button>
-          <button role="tab" type="button" id="tab-acc" aria-selected="false">Accessory</button>
+          <button role="tab" type="button" id="tab-char" aria-selected="true">Personnage</button>
+          <button role="tab" type="button" id="tab-acc" aria-selected="false">Accessoire</button>
         </div>
-        <div class="picker-grid" id="pick-grid" role="listbox" aria-label="Choose"></div>
-        <button class="accent" id="btn-avatar-done" type="button">Done</button>
+        <div class="picker-grid" id="pick-grid" role="listbox" aria-label="Choisir"></div>
+        <button class="accent" id="btn-avatar-done" type="button">Terminé</button>
         <p class="error" id="avatar-err" role="alert" style="color:#ffb4b4"></p>
       </div>
     </section>
@@ -95,7 +99,7 @@
     <section id="s-ready" data-screen class="center hidden">
       <div class="stack" style="align-items:center">
         <p class="muted" id="ready-num"></p>
-        <p class="big">Get ready!</p>
+        <p class="big" id="ready-title">Préparez-vous !</p>
         <div class="timer"><span id="ready-count"></span></div>
       </div>
     </section>
@@ -107,6 +111,7 @@
           <span class="pill" id="a-num"></span>
           <span class="pill" id="a-time"></span>
         </div>
+        <p class="round-tag hidden" id="a-round"></p>
         <p class="q-small" id="a-text"></p>
         <div class="answers player" id="a-buttons"></div>
         <div id="a-custom"></div>
@@ -117,8 +122,8 @@
     <section id="s-sent" data-screen class="center hidden">
       <div class="stack" style="align-items:center">
         <div class="spinner" aria-hidden="true"></div>
-        <p class="big">Answer sent</p>
-        <p class="muted">Were you fast enough?</p>
+        <p class="big">Réponse enregistrée</p>
+        <p class="muted" id="sent-msg">Avez-vous été assez rapide ?</p>
       </div>
     </section>
 
@@ -130,6 +135,8 @@
         <p class="muted" id="r-streak" style="color:#fff;font-weight:800"></p>
         <p class="correct-was hidden" id="r-correct"></p>
         <div class="points-pill" id="r-points"></div>
+        <p class="r-track hidden" id="r-track"></p>
+        <p id="r-time" class="muted" style="color:#fff"></p>
         <p id="r-rank" style="font-weight:800"></p>
       </div>
     </section>
@@ -138,7 +145,7 @@
     <section id="s-wait" data-screen class="center hidden">
       <div class="stack" style="align-items:center">
         <p class="big" id="w-rank"></p>
-        <p class="muted" id="w-msg">Look up at the main screen</p>
+        <p class="muted" id="w-msg">Regardez l’écran principal</p>
         <div class="spinner" aria-hidden="true"></div>
       </div>
     </section>
@@ -149,7 +156,7 @@
         <p class="huge" id="f-medal"></p>
         <p class="big" id="f-rank"></p>
         <p class="points-pill" id="f-score"></p>
-        <a class="btn accent" href="/">Play again</a>
+        <a class="btn accent" href="/">Rejouer</a>
       </div>
     </section>
 
@@ -157,7 +164,7 @@
     <section id="s-msg" data-screen class="center hidden">
       <div class="stack" style="align-items:center">
         <p class="big" id="m-text"></p>
-        <a class="btn accent" href="/">Back</a>
+        <a class="btn accent" href="/">Retour</a>
       </div>
     </section>
   </main>

@@ -1,12 +1,18 @@
 {
   "name": "quizblitz",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Live multiplayer quiz (Kahoot-style): 9 question types, music, host accounts, quiz library and reports",
+  "description": "Live multiplayer music blind test and quiz for parties and events: white-label, admin, host screen, phones as buzzers",
   "main": "server.js",
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server.js",
-    "test": "node test/e2e.js && node test/features.js"
+    "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/unit.test.js test/integration.test.js test/legacy.test.js",
+    "test:unit": "node --disable-warning=ExperimentalWarning --test test/unit.test.js",
+    "test:integration": "node --disable-warning=ExperimentalWarning --test test/integration.test.js test/legacy.test.js",
+    "lint": "node scripts/check-syntax.js",
+    "build": "node scripts/check-syntax.js && node scripts/build-static.js",
+    "demo:audio": "node scripts/generate-demo-audio.js"
   },
   "engines": {
     "node": ">=22.13"

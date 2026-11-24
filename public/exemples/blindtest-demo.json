@@ -1,0 +1,66 @@
+{
+  "id": "blindtest-demo",
+  "type": "music-blind-test",
+  "title": "Blind test de démonstration",
+  "description": "3 mélodies synthétisées libres de droits pour tester l’application",
+  "settings": {
+    "answerMode": "multiple-choice",
+    "countdownDuration": 3,
+    "excerptDuration": 15,
+    "revealDuration": 8,
+    "scoreboardDuration": 8,
+    "allowLateJoin": true,
+    "allowAnswerChange": false,
+    "playAudioOnHostOnly": true
+  },
+  "rounds": [
+    {
+      "id": "round-1",
+      "title": "Les artistes",
+      "questionType": "artist",
+      "tracks": [
+        {
+          "id": "track-001",
+          "title": "Arpèges du dimanche",
+          "artist": "Les Synthés Rêveurs",
+          "year": 2024,
+          "audioUrl": "/audio/demo-arpeges.wav",
+          "startTime": 0,
+          "duration": 15,
+          "choices": ["Les Synthés Rêveurs", "Orchestre Pixel", "DJ Cassette", "Duo Modem"],
+          "correctAnswer": "Les Synthés Rêveurs"
+        },
+        {
+          "id": "track-002",
+          "title": "Valse binaire",
+          "artist": "Orchestre Pixel",
+          "year": 2025,
+          "audioUrl": "/audio/demo-valse.wav",
+          "startTime": 2,
+          "duration": 15,
+          "choices": ["Duo Modem", "Orchestre Pixel", "Les Synthés Rêveurs", "DJ Cassette"],
+          "correctAnswer": "Orchestre Pixel"
+        }
+      ]
+    },
+    {
+      "id": "round-2",
+      "title": "Les titres",
+      "questionType": "title",
+      "tracks": [
+        {
+          "id": "track-003",
+          "title": "Disco à 8 bits",
+          "artist": "DJ Cassette",
+          "year": 2026,
+          "audioUrl": "/audio/demo-disco.wav",
+          "startTime": 4,
+          "duration": 15,
+          "choices": ["Boule à facettes", "Disco à 8 bits", "Samedi soir", "Néon fever"],
+          "correctAnswer": "Disco à 8 bits",
+          "difficulty": "easy"
+        }
+      ]
+    }
+  ]
+}

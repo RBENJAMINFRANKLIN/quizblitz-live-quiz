@@ -6,3 +6,6 @@ node_modules/
 Thumbs.db
 .claude/
 data/
+!.env.example
+.vercel/
+dist/

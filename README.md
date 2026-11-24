@@ -1,208 +1,133 @@
-# QuizBlitz
+# Blind Test Live (basé sur QuizBlitz)
 
-A live, multiplayer quiz game in the style of Kahoot-type quiz apps. The host shows questions on a big screen;
-players join on their phones by **scanning a QR code or typing a 6-digit game PIN**.
+Application de **blind test / quiz musical multijoueur en direct** pour soirées, bals, mariages, événements
+d'entreprise et animations. L'animateur projette l'écran principal, les joueurs scannent un QR code et
+répondent depuis leur téléphone, sans application ni compte. La musique est jouée **uniquement sur
+l'ordinateur de l'animateur**, pour que tout le monde l'entende en même temps.
 
-- **9 question types:** Quiz, True or false, Type answer, Slider, Puzzle, Drop pin, Poll, Word cloud, Open-ended
-- **Music and sound effects:** lobby music, question music that speeds up near the buzzer, ticks, gong, drumroll and fanfare
-- **Per-question points:** standard, double or none
-- **Game options:** random question and answer order, lock the game when it starts, friendly nickname generator, classic mode
-- **Nickname safety:** blocks offensive names in English, Hindi (Devanagari) and Hinglish
-- **Host accounts and an online quiz library**, plus **game reports** with CSV export
+Entièrement **personnalisable sans toucher au code** : nom, logo, favicon, couleurs, textes (marque blanche),
+depuis une interface d'administration.
 
-No npm dependencies: just **Node.js 22.13 or newer** (it uses Node's built-in SQLite).
+Ce projet est une évolution de [QuizBlitz](https://github.com/RBENJAMINFRANKLIN/quizblitz-live-quiz) : le quiz
+classique d'origine (9 types de questions, bibliothèque, rapports) reste disponible sur `/host`.
 
-## Demo
+> 📸 Captures d'écran à ajouter dans `docs/media/` : accueil, administration, éditeur, lobby, morceau, révélation, téléphone, podium.
 
-**🚀 [Try it live](https://quizblitz-xy0p.onrender.com/host)** (free hosting: the first load can take ~30 seconds to wake up).
+## Fonctionnalités
 
-**[▶ Watch a 2-minute game with every question type (MP4)](docs/media/quizblitz-all-types.mp4)**, recorded from the
-app running locally. The host screen is on the left and one player's phone is on the right.
+- **Administration** (`/admin`) sécurisée : tableau de bord, blind tests, parties en cours, historique, médias, paramètres.
+- **Marque blanche** : nom public, nom court, slogan, organisateur, textes, logos, favicon, image d'accueil, 7 couleurs, thème clair/sombre/auto, arrondi des boutons, aperçu en direct, restauration du thème. Visible immédiatement par tous, sans redéploiement.
+- **Blind tests** : manches, morceaux, 4 propositions, pochette, début et durée d'extrait, import/export JSON, duplication, archivage, préécoute avec ajustement du début, validation, brouillons.
+- **Partie** : PIN, QR code direct vers la partie, lobby, avatars, verrouillage, exclusion, compte à rebours, extrait audio sur l'écran animateur (préchargement, fondus, volume), pause / reprise, relance d'un morceau, révélation (pochette, titre, artiste, année, répartition des réponses), classement avec progressions et séries, podium animé, rapport.
+- **Téléphone** : mobile-first, pseudo validé, reconnexion automatique (veille, rafraîchissement, coupure réseau), résultat avec points, temps de réponse, série, rang et progression.
+- **Fiabilité** : serveur autoritaire (points et temps calculés côté serveur), réponse jamais envoyée aux joueurs avant la révélation, parties enregistrées en base et **reprises après un redémarrage**, plusieurs parties simultanées.
 
-[![Host lobby with game PIN, QR code and players](docs/media/02-host-lobby.png)](docs/media/quizblitz-all-types.mp4)
+## Prérequis
 
-**Question types on the big screen**
+- **Node.js 22.13 ou plus récent** (SQLite intégré). Aucune dépendance npm.
 
-| Type answer | Slider | Puzzle |
-|---|---|---|
-| ![Typed answers with correct ones ticked](docs/media/r2-reveal-fixed.png) | ![Number line with the correct value](docs/media/r3-reveal-fixed.png) | ![Correct order revealed](docs/media/r4-reveal.png) |
-| **Drop pin** | **Word cloud** | **Puzzle (while open)** |
-| ![Pins on the image and the correct area](docs/media/r5-reveal.png) | ![Word cloud of answers](docs/media/r7-reveal.png) | ![Shuffled puzzle items](docs/media/h4-question-fixed.png) |
-
-**On the phone**
-
-| Type answer | Slider | Puzzle | Drop pin | Wrong, with the answer | Poll / word cloud |
-|---|---|---|---|---|---|
-| ![Text answer](docs/media/p2-typeanswer.png) | ![Slider](docs/media/p3-slider.png) | ![Reorder items](docs/media/p4-puzzle.png) | ![Tap the image](docs/media/p5-droppin.png) | ![Incorrect, showing the correct answer](docs/media/p6-result-wrong-with-answer.png) | ![Neutral thank-you screen](docs/media/p8-result-neutral.png) |
-
-**Hosting, accounts and safety**
-
-| Editor with question types | Game options | Quiz library |
-|---|---|---|
-| ![Editor with type, time and points menus](docs/media/e0-editor-top.png) | ![Game options](docs/media/e2-options.png) | ![Library of saved quizzes](docs/media/l1-library.png) |
-| **Locked lobby** | **Nickname generator** | **Offensive nickname blocked** |
-| ![Lobby locked](docs/media/h0-lobby-locked.png) | ![Random friendly nickname with spin button](docs/media/p1-name-generator.png) | ![Hindi slur rejected](docs/media/p0-name-blocked.png) |
-
-**Classic screens:** [editor](docs/media/01-host-editor.png) · [question](docs/media/08-host-question.png) ·
-[reveal](docs/media/12-host-reveal.png) · [scoreboard](docs/media/15-host-scoreboard.png) · [podium](docs/media/18-host-podium.png) ·
-phone [join](docs/media/04-phone-nickname.png), [avatar](docs/media/05-phone-avatar.png), [answer](docs/media/09-phone-answer.png),
-[correct](docs/media/13-phone-correct.png), [wrong](docs/media/14-phone-wrong.png), [final](docs/media/19-phone-final.png)
-
-**Game reports**
-
-| Summary | Players | Questions |
-|---|---|---|
-| ![Report summary](docs/media/21-report-summary.png) | ![Per-player answers](docs/media/22-report-players.png) | ![Per-question breakdown](docs/media/23-report-questions.png) |
-
-## Run it
+## Installation et lancement en local
 
 ```bash
-npm start            # or: node server.js
+git clone https://github.com/RBENJAMINFRANKLIN/quizblitz-live-quiz.git
+cd quizblitz-live-quiz
+npm start                # ou : npm run dev (redémarre à chaque modification)
 ```
 
-Then on the computer that will be the big screen, open **http://localhost:3000/host**.
+- Accueil : http://localhost:3000
+- Administration : http://localhost:3000/admin
+- Le terminal affiche aussi l'adresse Wi-Fi (`http://192.168.x.x:3000`) que les téléphones utiliseront ; le QR code l'utilise automatiquement.
 
-1. Build a quiz (or click **Load sample quiz**, which uses every question type), set **⚙️ Game options**, then click **Host live game**.
-2. Players on the **same Wi-Fi** scan the QR code, or go to the address shown and enter the PIN.
-3. Click **Start** when everyone's in. Use **Next** to move from answers to scoreboard to the next question.
+### Compte administrateur
 
-> Windows may ask whether Node.js may accept network connections. Allow it on
-> **private networks**, or phones won't be able to connect.
-> To use a different port: `$env:PORT=8080; npm start` (PowerShell).
+Au premier démarrage sans configuration, un compte `admin@example.com` est créé avec un **mot de passe
+aléatoire affiché une seule fois dans le terminal**. Pour choisir le vôtre :
 
-## Try it online (free demo on Render)
-
-Deploy your own copy in a few clicks: fork this repo, then on [Render](https://render.com) choose
-**New → Blueprint** and pick your fork. `render.yaml` sets everything up on the free plan.
-
-Free-plan notes: the app **sleeps after ~15 minutes idle** and takes about 30 seconds to wake up, and its
-database **resets when it restarts**, so accounts and saved quizzes are not permanent. Use a paid instance with a
-disk (or your own computer) for permanent storage.
-
-## Question types
-
-| Type | Players… | Scoring |
-|---|---|---|
-| **Quiz** | pick one of 2-4 answers (one or more can be correct) | speed points |
-| **True or false** | pick True or False | speed points |
-| **Type answer** | type the answer; up to 4 accepted spellings, capitals, accents and spaces ignored | speed points |
-| **Slider** | pick a number on a slider; correct within a margin you set | speed points, less the further off |
-| **Puzzle** | put 3-4 shuffled items in the right order | speed points if the order is exactly right |
-| **Drop pin** | tap a spot on an image; correct inside the area you marked | speed points |
-| **Poll** | vote; there is no right answer | no points |
-| **Word cloud** | type a word or two; answers form a word cloud | no points |
-| **Open-ended** | type a longer answer (120 characters), shown on screen | no points |
-
-**Points per question:** *Standard*, *Double* (2×, shown as "2× points" on screen) or *No points*.
-A correct answer earns up to 1000 points, falling linearly to 500 at the buzzer, plus +100 per answer
-streak after the first (up to +500). Answer times are measured on the server, so a phone's clock can't affect speed points.
-
-Images can be any `https://` link or a file served by QuizBlitz (put it in `public/` and use e.g. `/sample/solar-system.svg`,
-which the sample drop-pin question uses).
-
-## Game options
-
-| Option | What it does |
-|---|---|
-| Randomise question order | Questions come in a random order |
-| Randomise answer order | Quiz and poll answers are shuffled |
-| Friendly nickname generator | Players get a random name like *BraveOtter* and can spin 3 times; typed names are not allowed |
-| Lock the game when it starts | Nobody new can join after the first question (on by default). The host can also **🔒 Lock / Unlock** the lobby any time |
-| Show questions and answers on players' devices | Turn off for classic mode: phones show only the coloured shapes |
-
-## Music and sounds
-
-All music and sound effects are **original and synthesised live in the browser** (Web Audio API), so there are no audio
-files to download. Kahoot's own recordings are copyrighted, so QuizBlitz recreates the feel instead:
-
-- **Host screen:** upbeat lobby music; a pop when each player joins; get-ready beeps; tense question music that speeds up
-  and ticks in the last 5 seconds; a gong at time-up; a reveal whoosh; a scoreboard sting; a drumroll, fanfare and applause on the podium.
-- **Phones:** a jingle for correct, a buzz for wrong and a friendly chime for polls and word clouds.
-- **🔊 / 🔇** buttons on the host screen and the phone footer turn sound on and off (remembered per device).
-
-Browsers only allow sound after a click, so the host's sound starts when you click **Host live game**.
-
-## Nickname safety
-
-Nicknames are checked against English, Hindi (Devanagari) and Hinglish (romanised Hindi) offensive words, including
-common disguises such as `f.u.c.k`, `fuuuck`, `sh1t`, spaced-out letters and words hidden inside longer names.
-Short words are matched only as whole words, so names like *Kshitij*, *Chhota*, *Assam* or *Scunthorpe* are allowed.
-The same filter hides offensive word-cloud and open-ended answers from the big screen. You can add words in `filter.js`.
-
-## Host accounts and quiz library
-
-Open **📚 My library** to create an account (name, email, password) or sign in.
-
-- **💾 Save to library** in the editor saves the quiz to your account; saving again updates it.
-- The library lists your quizzes with their question types and how many times each was played, with **▶ Host**,
-  **✏️ Edit**, **⧉ Duplicate**, **🗑 Delete** and search.
-- Reports of games you host while signed in belong to your account and can be opened from any device that reaches
-  your QuizBlitz server.
-
-"Online" means stored on the computer or server running QuizBlitz: on your own PC, the library is on your PC; deploy
-QuizBlitz to a server to reach it from anywhere. Passwords are hashed with scrypt; sessions use an HttpOnly cookie.
-
-## Reports (game history)
-
-Every game that reaches the podium (or is ended early with **End**) is saved. Open **📊 Reports**, or **View report**
-on the podium screen:
-
-- **Summary:** % correct, players, average score, podium, **difficult questions** (fewer than 35% correct), players who
-  **need help** (fewer than 35% correct) and players who **didn't finish**.
-- **Players:** rank, score, correct/unanswered, and each answer with points and time.
-- **Questions:** per type: answer splits, typed answers, slider average, puzzle and pin success, word-cloud words.
-- **Download CSV** (opens in Excel or Google Sheets) and **Delete**.
-
-Signed-in hosts see their own reports. Games hosted without an account are visible only on the computer running
-QuizBlitz (or anywhere with `REPORTS_KEY`, see below).
-
-## Where data lives
-
-- **Live games:** in memory while they run; restarting the server ends a game in progress.
-- **Accounts, libraries and reports:** `data/quizblitz.db` (SQLite: one file, nothing to install). Back it up by
-  copying the file. Older databases are upgraded automatically.
-- **The quiz you're editing:** saved in the host's browser as a draft, and can be exported or imported as JSON.
-
-## Settings (environment variables)
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `PORT` | `3000` | Port to listen on |
-| `QUIZBLITZ_DB` | `data/quizblitz.db` | Database file |
-| `REPORTS_KEY` | (none) | Lets no-account reports be opened remotely with `/reports?key=…` |
-| `COOKIE_SECURE` | `false` | Set to `true` when serving over HTTPS |
-
-## Project layout
-
+```bash
+ADMIN_EMAIL=vous@exemple.fr ADMIN_PASSWORD="une-phrase-de-passe-longue" npm start
 ```
-server.js          game server: state machine, timers, scoring, accounts, library, reports API, SSE
-questions.js       question types: validation, what phones see, scoring, reveal summaries
-filter.js          nickname/text filter (English, Hindi, Hinglish) and the nickname generator
-db.js              SQLite storage: users, sessions, quizzes, game history
-public/host.*      quiz editor, game options, lobby (PIN + QR), host game screens, podium
-public/play.*      player phone screens for every question type
-public/library.*   sign in / register and the quiz library
-public/reports.*   reports page (summary, players, questions, CSV)
-public/sound.js    synthesised music and sound effects
-public/shared.js   API, clock-sync and DOM helpers
-public/sample/     image used by the sample drop-pin question
-EVIDENCE.md        what I learned studying how live quiz apps work
-```
+
+(PowerShell : `$env:ADMIN_PASSWORD="…"; npm start`). Voir `.env.example` pour toutes les variables.
+
+## Prise en main en 5 minutes
+
+1. **/admin** › connexion.
+2. **Paramètres › Général** : nom (« Le Blind Test du Bal Pop' »), slogan. **Apparence** : logo, favicon, couleurs → aperçu → Enregistrer.
+3. **Blind tests › Importer › Importer le blind test de démonstration** (3 mélodies libres de droits), ou **Nouveau blind test**.
+4. **▶ Lancer** : l'écran animateur s'ouvre avec le QR code. Affichez-le sur le vidéoprojecteur, branchez le son.
+5. Les joueurs scannent, choisissent un pseudo ; cliquez **Lancer ▶**. Pilotez avec la barre en bas de l'écran.
+
+## Ajouter vos musiques
+
+- **Médias › Fichiers audio › Téléverser** (MP3, M4A/AAC, OGG, WAV ; 25 Mo max), ou directement depuis l'éditeur (bouton ⬆ d'un morceau, ou « Ajouter plusieurs fichiers audio » : `Artiste - Titre.mp3` préremplit les champs).
+- Ou déposez les fichiers dans `public/audio/` et utilisez `/audio/mon-fichier.mp3`, ou un lien `https://`.
+- Les fichiers téléversés reçoivent un nom aléatoire : l'URL ne trahit jamais la réponse.
+- ⚠️ N'utilisez que des musiques que vous avez le droit de diffuser (voir « Droits musicaux »).
+
+## Format JSON
+
+Voir [docs/FORMAT_BLIND_TEST.md](docs/FORMAT_BLIND_TEST.md) et l'exemple `public/exemples/blindtest-demo.json`.
 
 ## Tests
 
-With the server running (`npm start`), run `npm test`. It runs two API test suites:
+```bash
+npm test         # 34 tests : unitaires, intégration (serveur réel), anciens tests du quiz classique
+npm run lint
+npm run build
+```
 
-- `test/e2e.js`: a 3-player game: speed scoring, streaks, rejoining and the saved report.
-- `test/features.js`: every question type (answers never leak to phones, correct scoring), double and no points,
-  lobby lock, nickname filter and generator, accounts, the quiz library and report privacy between accounts.
+Détails : [docs/TESTS.md](docs/TESTS.md).
 
-## Not built yet
+## Déploiement (Vercel)
 
-Team mode, player reactions/emotes, self-paced "assign" homework mode and public quiz discovery.
+Vercel seul ne peut pas faire tourner un jeu temps réel avec état : le moteur tourne sur un **backend Node
+persistant** (Railway, Fly.io ou Render avec disque) et **Vercel** sert le site et relaie les requêtes.
+Procédure complète : [docs/DEPLOIEMENT_VERCEL.md](docs/DEPLOIEMENT_VERCEL.md).
 
-## Disclaimer
+## Architecture
 
-QuizBlitz is an independent, open-source learning project. It is **not affiliated with, endorsed by or
-connected to Kahoot!**. It contains no Kahoot code, audio, images, logos or branding; all code, music and sound
-effects are original. Kahoot! is a trademark of its owner.
+```
+server.js            serveur HTTP : pages (marque injectée), API REST, SSE, administration, machine à états
+db.js                SQLite : comptes, sessions, quiz, rapports, paramètres, blind tests, médias, parties en cours
+lib/settings.js      paramètres globaux / marque blanche (source unique), thème CSS, rendu des pages
+lib/blindtest.js     format music-blind-test : validation, conversion en questions
+lib/scoring.js       calcul des points (configurable)
+lib/media.js         uploads sécurisés et pilote de stockage
+lib/gamestore.js     instantanés des parties (reprise après redémarrage)
+questions.js         types de questions (quiz classique et QCM)
+views/               pages HTML (gabarits rendus par le serveur)
+public/              JS / CSS / audio de démonstration (statiques)
+scripts/             lint, build Vercel, génération de l'audio de démo
+test/                tests automatisés
+```
+
+Documentation : [ANALYSE_TECHNIQUE](docs/ANALYSE_TECHNIQUE.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
+[PERSONNALISATION](docs/PERSONNALISATION.md) · [ADMINISTRATION](docs/ADMINISTRATION.md) ·
+[FORMAT_BLIND_TEST](docs/FORMAT_BLIND_TEST.md) · [DEPLOIEMENT_VERCEL](docs/DEPLOIEMENT_VERCEL.md) ·
+[TESTS](docs/TESTS.md) · [PLAN_EVOLUTION](docs/PLAN_EVOLUTION.md)
+
+## Dépannage
+
+| Problème | Solution |
+|---|---|
+| Les téléphones n'arrivent pas à se connecter en local | même Wi-Fi que l'ordinateur ; autoriser Node dans le pare-feu Windows ; utiliser l'adresse affichée dans le terminal (pas `localhost`) ; certains Wi-Fi publics isolent les appareils |
+| Pas de son sur l'écran animateur | cliquer dans la page (règle d'autoplay) ou « Activer le son et reprendre » ; vérifier le volume de la barre de commandes et la sortie audio ; message d'erreur rouge = fichier introuvable ou format non lu par le navigateur |
+| QR code absent | le script QR vient du CDN cdnjs : connexion Internet requise ; l'adresse et le PIN restent affichés |
+| Partie bloquée | barre de commandes › 🛠 Débloquer (ne supprime rien) |
+| Onglet animateur fermé | Admin › Parties en cours › Reprendre l'animation |
+| Mot de passe admin perdu | définir `ADMIN_PASSWORD` et redémarrer |
+| L'ancien nom s'affiche encore | rafraîchir la page (les écrans déjà ouverts ne se mettent pas à jour seuls) |
+
+## Droits musicaux
+
+La diffusion publique de musique (soirée, bal, événement) est soumise en France à déclaration auprès de la
+**SACEM**, quel que soit le support. Ce dépôt ne contient **aucune musique protégée** : les extraits de
+démonstration sont des mélodies originales synthétisées (`npm run demo:audio`). Vous êtes responsable des
+fichiers que vous ajoutez.
+
+## Licence et avertissement
+
+Projet open source indépendant, dérivé de QuizBlitz. Il n'est **ni affilié, ni approuvé, ni lié à Kahoot!**
+et ne contient aucun code, son, image, logo ou élément de marque de Kahoot! ; Kahoot! est une marque de son
+propriétaire. Aucun fichier de licence n'est présent dans le dépôt d'origine : la licence reste à préciser
+par son auteur avant toute réutilisation publique.

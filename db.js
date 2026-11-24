@@ -1,9 +1,12 @@
 // Persistent data in SQLite via Node's built-in `node:sqlite` (Node 22.13+),
-// so QuizBlitz still has zero npm dependencies:
-//   users, sessions   host accounts (scrypt-hashed passwords, hashed session tokens)
+// so the app still has zero npm dependencies:
+//   users, sessions   host and admin accounts (scrypt-hashed passwords, hashed session tokens)
 //   quizzes           each host's quiz library
 //   games, players, answers   game history shown on /reports
-// Live games stay in memory; a game is written here once, when it ends.
+//   app_settings      global identity and theme (one row)
+//   blind_tests       blind tests managed in /admin
+//   media             uploaded files (the bytes live in the media storage driver)
+//   live_games        snapshot of every running game, restored after a restart
 
 const fs = require('fs');
 const path = require('path');
@@ -76,7 +79,41 @@ function open(file) {
   // Columns added after the first release (databases created earlier are upgraded in place).
   addColumn(db, 'games', 'owner_id', 'INTEGER REFERENCES users(id) ON DELETE CASCADE');
   addColumn(db, 'answers', 'response_json', 'TEXT');
+  addColumn(db, 'users', 'role', "TEXT NOT NULL DEFAULT 'host'");
+  addColumn(db, 'games', 'kind', "TEXT NOT NULL DEFAULT 'quiz'");
   db.exec('CREATE INDEX IF NOT EXISTS games_owner ON games(owner_id, ended_at)');
+  // Blind test version: global settings, blind tests, media and live game snapshots.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      settings_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS blind_tests (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      blind_test_json TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0,
+      plays INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS media (
+      id TEXT PRIMARY KEY,          -- storage key, e.g. 3f2a...e1.png
+      kind TEXT NOT NULL,           -- image | favicon | audio
+      mime TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      original_name TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS live_games (
+      pin TEXT PRIMARY KEY,
+      game_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+  `);
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
   return db;
 }
@@ -122,21 +159,141 @@ function checkLogin(db, email, password) {
   const u = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').trim().toLowerCase());
   // Run scrypt even for unknown emails so response time does not reveal which emails exist.
   const ok = verifyPassword(String(password || ''), u ? u.pass_hash : DUMMY_HASH);
-  return u && ok ? { id: u.id, email: u.email, name: u.name } : null;
+  return u && ok ? { id: u.id, email: u.email, name: u.name, role: u.role } : null;
 }
 
-function createSession(db, userId) {
+function createSession(db, userId, maxAgeSeconds = SESSION_DAYS * 86400) {
   const token = crypto.randomBytes(32).toString('base64url');
   db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
-    .run(tokenHash(token), userId, Date.now() + SESSION_DAYS * 86400000);
-  return { token, maxAge: SESSION_DAYS * 86400 };
+    .run(tokenHash(token), userId, Date.now() + maxAgeSeconds * 1000);
+  return { token, maxAge: maxAgeSeconds };
 }
 
 function sessionUser(db, token) {
   if (!token) return null;
-  const row = db.prepare(`SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id
+  const row = db.prepare(`SELECT u.id, u.email, u.name, u.role FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ? AND s.expires_at > ?`).get(tokenHash(token), Date.now());
-  return row ? { id: row.id, email: row.email, name: row.name } : null;
+  return row ? { id: row.id, email: row.email, name: row.name, role: row.role } : null;
+}
+
+/**
+ * Makes sure an administrator account exists for `email` with `password`
+ * (from ADMIN_EMAIL / ADMIN_PASSWORD). Changing ADMIN_PASSWORD and restarting
+ * resets the password. Returns the admin user.
+ */
+function ensureAdmin(db, email, password) {
+  const e = String(email).trim().toLowerCase();
+  const u = db.prepare('SELECT * FROM users WHERE email = ?').get(e);
+  if (!u) {
+    const { lastInsertRowid } = db.prepare("INSERT INTO users (email, name, pass_hash, created_at, role) VALUES (?, ?, ?, ?, 'admin')")
+      .run(e, 'Administrateur', hashPassword(String(password)), Date.now());
+    return { id: Number(lastInsertRowid), email: e, name: 'Administrateur', role: 'admin', created: true };
+  }
+  const passwordChanged = !verifyPassword(String(password), u.pass_hash);
+  if (passwordChanged || u.role !== 'admin') {
+    db.prepare("UPDATE users SET pass_hash = ?, role = 'admin' WHERE id = ?").run(passwordChanged ? hashPassword(String(password)) : u.pass_hash, u.id);
+    if (passwordChanged) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id); // log out old sessions
+  }
+  return { id: u.id, email: u.email, name: u.name, role: 'admin', created: false };
+}
+
+const adminCount = (db) => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").get().n;
+
+// ---------------------------------------------------------------- global settings
+
+function getSettings(db, defaults) {
+  const row = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
+  if (!row) return { ...defaults };
+  return { ...defaults, ...JSON.parse(row.settings_json), updatedAt: row.updated_at, updatedBy: row.updated_by };
+}
+
+function saveSettings(db, settings, updatedBy) {
+  const { updatedAt, updatedBy: _ignored, ...rest } = settings;
+  const now = Date.now();
+  db.prepare(`INSERT INTO app_settings (id, settings_json, updated_at, updated_by) VALUES (1, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
+    .run(JSON.stringify(rest), now, updatedBy || null);
+  return { ...rest, updatedAt: now, updatedBy: updatedBy || null };
+}
+
+// ---------------------------------------------------------------- blind tests
+
+const blindRow = (r, full) => {
+  const bt = JSON.parse(r.blind_test_json);
+  const base = { id: r.id, title: r.title, description: bt.description || '', archived: !!r.archived, plays: r.plays,
+    rounds: bt.rounds.length, tracks: bt.rounds.reduce((n, x) => n + x.tracks.length, 0), createdAt: r.created_at, updatedAt: r.updated_at };
+  return full ? { ...base, blindTest: bt } : base;
+};
+
+function listBlindTests(db, { includeArchived = true } = {}) {
+  return db.prepare(`SELECT * FROM blind_tests ${includeArchived ? '' : 'WHERE archived = 0'} ORDER BY updated_at DESC`).all().map((r) => blindRow(r, false));
+}
+
+function getBlindTest(db, id) {
+  const r = db.prepare('SELECT * FROM blind_tests WHERE id = ?').get(String(id));
+  return r ? blindRow(r, true) : null;
+}
+
+/** Inserts or replaces a validated blind test. */
+function saveBlindTest(db, bt) {
+  const now = Date.now();
+  const exists = db.prepare('SELECT 1 FROM blind_tests WHERE id = ?').get(bt.id);
+  if (exists) {
+    db.prepare('UPDATE blind_tests SET title = ?, blind_test_json = ?, updated_at = ? WHERE id = ?').run(bt.title, JSON.stringify(bt), now, bt.id);
+  } else {
+    if (db.prepare('SELECT COUNT(*) AS n FROM blind_tests').get().n >= 1000) throw Object.assign(new Error('Trop de blind tests (maximum 1000)'), { status: 409 });
+    db.prepare('INSERT INTO blind_tests (id, title, blind_test_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(bt.id, bt.title, JSON.stringify(bt), now, now);
+  }
+  return bt.id;
+}
+
+const setBlindTestArchived = (db, id, archived) => db.prepare('UPDATE blind_tests SET archived = ?, updated_at = ? WHERE id = ?').run(archived ? 1 : 0, Date.now(), id).changes > 0;
+const deleteBlindTest = (db, id) => db.prepare('DELETE FROM blind_tests WHERE id = ?').run(id).changes > 0;
+const countBlindTestPlay = (db, id) => db.prepare('UPDATE blind_tests SET plays = plays + 1 WHERE id = ?').run(id);
+const allBlindTestJson = (db) => db.prepare('SELECT blind_test_json FROM blind_tests').all().map((r) => JSON.parse(r.blind_test_json));
+
+// ---------------------------------------------------------------- media
+
+function addMedia(db, m) {
+  db.prepare('INSERT INTO media (id, kind, mime, size, original_name, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(m.id, m.kind, m.mime, m.size, m.originalName, Date.now());
+}
+const mediaRow = (r) => ({ id: r.id, url: `/media/${r.id}`, kind: r.kind, mime: r.mime, size: r.size, originalName: r.original_name, createdAt: r.created_at });
+const listMedia = (db, kind) => (kind
+  ? db.prepare('SELECT * FROM media WHERE kind = ? ORDER BY created_at DESC').all(kind)
+  : db.prepare('SELECT * FROM media ORDER BY created_at DESC').all()).map(mediaRow);
+const getMedia = (db, id) => { const r = db.prepare('SELECT * FROM media WHERE id = ?').get(String(id)); return r ? mediaRow(r) : null; };
+const deleteMedia = (db, id) => db.prepare('DELETE FROM media WHERE id = ?').run(id).changes > 0;
+
+// ---------------------------------------------------------------- live game snapshots
+
+function saveLiveGame(db, pin, json, expiresAt) {
+  db.prepare(`INSERT INTO live_games (pin, game_json, updated_at, expires_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(pin) DO UPDATE SET game_json = excluded.game_json, updated_at = excluded.updated_at, expires_at = excluded.expires_at`)
+    .run(pin, json, Date.now(), expiresAt);
+}
+const deleteLiveGame = (db, pin) => db.prepare('DELETE FROM live_games WHERE pin = ?').run(pin);
+function loadLiveGames(db) {
+  db.prepare('DELETE FROM live_games WHERE expires_at < ?').run(Date.now());
+  return db.prepare('SELECT game_json FROM live_games').all().map((r) => r.game_json);
+}
+
+function stats(db) {
+  const one = (sql) => db.prepare(sql).get().n;
+  const tracks = allBlindTestJson(db).reduce((n, bt) => n + bt.rounds.reduce((m, r) => m + r.tracks.length, 0), 0);
+  return {
+    blindTests: one('SELECT COUNT(*) AS n FROM blind_tests WHERE archived = 0'),
+    archivedBlindTests: one('SELECT COUNT(*) AS n FROM blind_tests WHERE archived = 1'),
+    tracks,
+    media: one('SELECT COUNT(*) AS n FROM media'),
+    gamesPlayed: one('SELECT COUNT(*) AS n FROM games'),
+  };
+}
+
+function recentGames(db, limit = 8) {
+  return db.prepare(`SELECT g.id, g.title, g.pin, g.ended_at, g.completed, g.kind, (SELECT COUNT(*) FROM players p WHERE p.game_id = g.id) AS players
+    FROM games g ORDER BY g.ended_at DESC LIMIT ?`).all(limit)
+    .map((r) => ({ id: r.id, title: r.title, pin: r.pin, endedAt: r.ended_at, completed: !!r.completed, kind: r.kind, players: r.players }));
 }
 
 function deleteSession(db, token) {
@@ -190,8 +347,8 @@ function saveGame(db, g, rankedPlayers, completed) {
   db.exec('BEGIN');
   try {
     const { lastInsertRowid: gameId } = db.prepare(
-      'INSERT INTO games (pin, title, quiz_json, started_at, ended_at, questions_played, completed, owner_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(g.pin, g.quiz.title, JSON.stringify(g.quiz), g.startedAt, Date.now(), played, completed ? 1 : 0, g.ownerId ?? null);
+      'INSERT INTO games (pin, title, quiz_json, started_at, ended_at, questions_played, completed, owner_id, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(g.pin, g.quiz.title, JSON.stringify(g.quiz), g.startedAt, Date.now(), played, completed ? 1 : 0, g.ownerId ?? null, g.quiz.kind || 'quiz');
     const insPlayer = db.prepare('INSERT INTO players (game_id, name, avatar_json, score, rank) VALUES (?, ?, ?, ?, ?)');
     const insAnswer = db.prepare(`INSERT INTO answers (game_id, player_id, question_index, choice, correct, points, response_ms, response_json)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -318,7 +475,11 @@ function reportCsv(r) {
 }
 
 module.exports = {
-  open, createUser, checkLogin, createSession, sessionUser, deleteSession,
+  open, createUser, checkLogin, createSession, sessionUser, deleteSession, ensureAdmin, adminCount,
+  getSettings, saveSettings,
+  listBlindTests, getBlindTest, saveBlindTest, setBlindTestArchived, deleteBlindTest, countBlindTestPlay, allBlindTestJson,
+  addMedia, listMedia, getMedia, deleteMedia,
+  saveLiveGame, deleteLiveGame, loadLiveGames, stats, recentGames,
   listQuizzes, getQuiz, saveQuiz, deleteQuiz, countPlay,
   saveGame, listReports, getReport, deleteReport, reportCsv,
 };

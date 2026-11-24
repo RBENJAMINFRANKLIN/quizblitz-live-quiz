@@ -51,7 +51,7 @@ $('pin-form').addEventListener('submit', async (e) => {
   Sound.unlock();
   try {
     const game = await api(`/api/games/${encodeURIComponent(value)}`);
-    if (game.locked) throw new Error('This game is locked. Ask the host to unlock it.');
+    if (game.locked) throw new Error('Cette partie est verrouillée. Demandez à l’animateur de la déverrouiller.');
     pin = value;
     history.replaceState(null, '', `/play?pin=${pin}`);
     await showNameStep(game);
@@ -97,9 +97,9 @@ function connect() {
   // exposing the status, so probe the game and retry a few times.
   es.addEventListener('error', async () => {
     if (es.readyState !== EventSource.CLOSED) return;
-    if (++failedReconnects > 3) return endWith('You are no longer in this game.');
+    if (++failedReconnects > 3) return endWith('Vous ne faites plus partie de cette partie.');
     try { await api(`/api/games/${session.pin}`); setTimeout(connect, 1500); }
-    catch { endWith('This game is no longer available.'); }
+    catch { endWith('Cette partie n’est plus disponible.'); }
   });
 }
 
@@ -111,9 +111,17 @@ function endWith(text) {
   show('s-msg');
 }
 
-function ordinal(n) {
-  const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+const ordinal = (n) => (n === 1 ? '1er' : `${n}e`);
+const place = (n) => (n === 1 ? '1re place' : `${n}e place`);
+
+function moveText(prev, now) {
+  if (!prev || !now || prev === now) return '';
+  return prev > now ? ` (▲ ${prev - now})` : ` (▼ ${now - prev})`;
+}
+
+function trackLabel(b) {
+  if (!b) return '';
+  return `Manche ${b.roundIndex + 1}/${b.roundCount} · Morceau ${b.trackInRound + 1}/${b.tracksInRound}`;
 }
 
 function renderAvatar(avatar) {
@@ -170,11 +178,11 @@ $('btn-avatar-done').addEventListener('click', async () => {
 });
 
 function setScore(score) {
-  if (typeof score === 'number') $('f-total').textContent = score.toLocaleString();
+  if (typeof score === 'number') $('f-total').textContent = score.toLocaleString('fr-FR');
 }
 
 function onMessage(msg) {
-  if (msg.type === 'KICKED') return endWith('The host removed you from the game.');
+  if (msg.type === 'KICKED') return endWith('L’animateur vous a retiré de la partie.');
   if (msg.type !== 'STATE') return;
   // Don't yank the player out of the avatar picker while still in the lobby.
   const inPicker = !$('s-avatar').classList.contains('hidden');
@@ -183,44 +191,53 @@ function onMessage(msg) {
   setScore(msg.score);
   if (!inPicker) renderAvatar(msg.avatar);
   const q = msg.question;
-  $('t-progress').textContent = q ? `${q.index + 1} of ${q.total}` : '';
+  $('t-progress').textContent = q ? `${q.index + 1}/${q.total}` : '';
+  $('paused').classList.toggle('hidden', !msg.paused);
+  const blind = msg.blind;
 
   switch (msg.state) {
     case 'LOBBY':
+      $('lobby-title').textContent = msg.title || '';
       show('s-lobby');
       break;
     case 'GET_READY':
-      $('ready-num').textContent = `Question ${q.index + 1} of ${q.total}`;
-      stopTimer = countdown(msg.startsAt, 0, (s) => { $('ready-count').textContent = s; });
+      $('ready-num').textContent = blind ? `${blind.roundTitle} · ${trackLabel(blind)}` : `Question ${q.index + 1} sur ${q.total}`;
+      $('ready-title').textContent = blind ? '🎧 Écoutez bien…' : 'Préparez-vous !';
+      shownQuestion = -1; // a restarted track must show fresh, enabled buttons
+      if (msg.paused) $('ready-count').textContent = Math.ceil(msg.paused.remainingMs / 1000);
+      else stopTimer = countdown(msg.startsAt, 0, (s) => { $('ready-count').textContent = s; });
       show('s-ready');
       break;
     case 'QUESTION':
-      if (msg.answered) { show('s-sent'); break; }
-      renderQuestion(q);
-      stopTimer = countdown(msg.endsAt, 0, (s) => { $('a-time').textContent = `⏱ ${s}`; });
+      if (msg.answered && !msg.canChange) { show('s-sent'); break; }
+      renderQuestion(q, blind);
+      if (msg.paused) $('a-time').textContent = `⏸ ${Math.ceil(msg.paused.remainingMs / 1000)}`;
+      else stopTimer = countdown(msg.endsAt, 0, (s) => { $('a-time').textContent = `⏱ ${s}`; });
       show('s-answer');
       break;
     case 'REVEAL':
       renderResult(msg.result, q ? q.index : '');
       break;
     case 'SCOREBOARD':
-      $('w-rank').textContent = `You're in ${ordinal(msg.rank)} place`;
-      $('w-msg').textContent = 'Look up at the main screen';
+      $('w-rank').textContent = `Vous êtes à la ${place(msg.rank)}${moveText(msg.prevRank, msg.rank)}`;
+      $('w-msg').textContent = 'Regardez l’écran principal';
       show('s-wait');
       break;
     case 'ENDED':
       $('f-medal').replaceChildren(avatarEl(session.avatar, 120, msg.rank <= 3 ? 'groove' : ''),
         el('span', { class: 'medal' }, ['🥇', '🥈', '🥉'][msg.rank - 1] || '🎉'));
-      $('f-rank').textContent = `${ordinal(msg.rank)} of ${msg.total}`;
-      $('f-score').textContent = `${msg.score.toLocaleString()} points`;
+      $('f-rank').textContent = `${ordinal(msg.rank)} sur ${msg.total}`;
+      $('f-score').textContent = `${msg.score.toLocaleString('fr-FR')} points`;
       try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
       show('s-final');
       break;
   }
 }
 
-function renderQuestion(q) {
+function renderQuestion(q, blind) {
   $('a-num').textContent = `${q.index + 1} / ${q.total}${q.points === 'double' ? ' · 2×' : ''}`;
+  $('a-round').textContent = blind ? `🎵 ${blind.roundTitle} · ${trackLabel(blind)}` : '';
+  $('a-round').classList.toggle('hidden', !blind);
   $('a-text').textContent = q.text;
   $('a-text').classList.toggle('hidden', !q.showOnDevices);
   if (shownQuestion === q.index) return; // keep inputs stable on snapshot repeats
@@ -243,10 +260,10 @@ function renderQuestion(q) {
   if (q.type === 'typeanswer' || q.type === 'wordcloud' || q.type === 'openended') {
     const long = q.type === 'openended';
     const field = long
-      ? el('textarea', { rows: '3', maxlength: String(q.maxLength), 'aria-label': 'Your answer', placeholder: 'Type your answer' })
-      : el('input', { type: 'text', maxlength: String(q.maxLength), 'aria-label': 'Your answer', placeholder: 'Type your answer', autocomplete: 'off', autocapitalize: 'off', enterkeyhint: 'send' });
+      ? el('textarea', { rows: '3', maxlength: String(q.maxLength), 'aria-label': 'Your answer', placeholder: 'Votre réponse' })
+      : el('input', { type: 'text', maxlength: String(q.maxLength), 'aria-label': 'Votre réponse', placeholder: 'Votre réponse', autocomplete: 'off', autocapitalize: 'off', enterkeyhint: 'send' });
     const form = el('form', { class: 'phone-input', onsubmit: (e) => { e.preventDefault(); if (field.value.trim()) send(field.value); } },
-      field, el('button', { class: 'accent', type: 'submit' }, 'Submit'), el('p', { class: 'error', id: 'a-err', role: 'alert' }));
+      field, el('button', { class: 'accent', type: 'submit' }, 'Envoyer'), el('p', { class: 'error', id: 'a-err', role: 'alert' }));
     custom.replaceChildren(form);
     setTimeout(() => field.focus(), 50);
     return;
@@ -259,7 +276,7 @@ function renderQuestion(q) {
     value.textContent = `${range.value}${q.unit ? ` ${q.unit}` : ''}`;
     custom.replaceChildren(el('div', { class: 'phone-input' }, value, range,
       el('div', { class: 'row', style: 'justify-content:space-between;font-weight:800' }, el('span', {}, q.min), el('span', {}, q.max)),
-      el('button', { class: 'accent', type: 'button', onclick: () => send(Number(range.value)) }, 'Submit'),
+      el('button', { class: 'accent', type: 'button', onclick: () => send(Number(range.value)) }, 'Envoyer'),
       el('p', { class: 'error', id: 'a-err', role: 'alert' })));
     return;
   }
@@ -275,14 +292,14 @@ function renderQuestion(q) {
       el('button', { type: 'button', 'aria-label': `Move ${text[id]} down`, disabled: i === order.length - 1 ? '' : null, onclick: () => move(i, 1) }, '▼'))));
     draw();
     custom.replaceChildren(el('div', { class: 'phone-input' }, list,
-      el('button', { class: 'accent', type: 'button', onclick: () => send(order) }, 'Submit order'),
+      el('button', { class: 'accent', type: 'button', onclick: () => send(order) }, 'Envoyer l’ordre'),
       el('p', { class: 'error', id: 'a-err', role: 'alert' })));
     return;
   }
   if (q.type === 'droppin') {
     let pinAt = null;
     const marker = el('span', { class: 'pin hidden', 'aria-hidden': 'true' }, '📍');
-    const submitBtn = el('button', { class: 'accent', type: 'button', disabled: '', onclick: () => pinAt && send(pinAt) }, 'Submit pin');
+    const submitBtn = el('button', { class: 'accent', type: 'button', disabled: '', onclick: () => pinAt && send(pinAt) }, 'Envoyer');
     const img = el('img', { src: q.image, alt: 'Tap the image to drop your pin', referrerpolicy: 'no-referrer' });
     const area = el('div', { class: 'tap-image', role: 'button', tabindex: '0', 'aria-label': 'Tap to drop your pin',
       onclick: (e) => {
@@ -302,7 +319,7 @@ async function submit(questionIndex, answer, box) {
   try {
     await api(`/api/games/${session.pin}/answer`, { token: session.token, questionIndex, answer });
   } catch (ex) {
-    if (ex.code === 'QUESTION_CLOSED' || ex.code === 'ALREADY_ANSWERED') return; // reveal is on its way
+    if (ex.code === 'QUESTION_CLOSED' || ex.code === 'ALREADY_ANSWERED' || ex.code === 'QUESTION_PAUSED') return; // the next state is on its way
     box.querySelectorAll('button, input, textarea').forEach((b) => { b.disabled = false; });
     const err = document.getElementById('a-err');
     if (err) err.textContent = ex.message;
@@ -322,24 +339,28 @@ function renderResult(r, qIndex) {
   if (!r.scored) {
     body.classList.add('result-neutral');
     $('r-icon').textContent = r.answered ? '👍' : '⏰';
-    $('r-title').textContent = r.answered ? 'Thanks for answering!' : "Time's up";
+    $('r-title').textContent = r.answered ? 'Merci pour votre réponse !' : 'Temps écoulé';
     $('r-streak').textContent = '';
-    $('r-points').textContent = r.answered ? `You said: ${r.yourAnswer}` : 'No answer this time';
+    $('r-points').textContent = r.answered ? `Votre réponse : ${r.yourAnswer}` : 'Pas de réponse cette fois';
     $('r-correct').classList.add('hidden');
     if (fresh) Sound.neutral();
   } else {
     body.classList.add(r.isCorrect ? 'result-good' : 'result-bad');
     $('r-icon').textContent = r.isCorrect ? '✔' : '✖';
-    $('r-title').textContent = r.isCorrect ? 'Correct' : r.answered ? 'Incorrect' : "Time's up";
-    $('r-streak').textContent = r.streak >= 2 ? `🔥 Answer streak ${r.streak}` : '';
-    $('r-points').textContent = r.isCorrect ? `+ ${r.points.toLocaleString()}` : 'No points this time';
-    $('r-correct').textContent = `Correct answer: ${r.correctText}`;
+    $('r-title').textContent = r.isCorrect ? 'Bonne réponse !' : r.answered ? 'Mauvaise réponse' : 'Temps écoulé';
+    $('r-streak').textContent = r.streak >= 2 ? `🔥 Série de ${r.streak} bonnes réponses` : '';
+    $('r-points').textContent = r.isCorrect ? `+ ${r.points.toLocaleString('fr-FR')}` : 'Aucun point cette fois';
+    $('r-correct').textContent = `Bonne réponse : ${r.correctText}`;
     $('r-correct').classList.toggle('hidden', r.isCorrect || !r.correctText);
     if (fresh) (r.isCorrect ? Sound.correct : Sound.wrong)();
   }
-  $('r-rank').textContent = r.behind
-    ? `You're in ${ordinal(r.rank)} place, ${r.behind.gap.toLocaleString()} points behind ${r.behind.name}`
-    : `You're in 1st place!`;
+  const track = r.reveal ? `🎵 ${r.reveal.title} — ${r.reveal.artist}${r.reveal.year ? ` (${r.reveal.year})` : ''}` : '';
+  $('r-track').textContent = track;
+  $('r-track').classList.toggle('hidden', !track);
+  $('r-time').textContent = r.answered && typeof r.responseMs === 'number' ? `Temps de réponse : ${(r.responseMs / 1000).toFixed(1).replace('.', ',')} s` : '';
+  $('r-rank').textContent = (r.behind
+    ? `${place(r.rank)}, à ${r.behind.gap.toLocaleString('fr-FR')} points de ${r.behind.name}`
+    : 'Vous êtes en tête !') + moveText(r.prevRank, r.rank);
   show('s-result');
 }
 
@@ -367,7 +388,7 @@ new MutationObserver(() => {
     $('pin').value = urlPin;
     api(`/api/games/${encodeURIComponent(urlPin)}`)
       .then((game) => {
-        if (game.locked) throw new Error('This game is locked. Ask the host to unlock it.');
+        if (game.locked) throw new Error('Cette partie est verrouillée. Demandez à l’animateur de la déverrouiller.');
         pin = urlPin;
         return showNameStep(game);
       })

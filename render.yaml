@@ -1,16 +1,35 @@
-# Render Blueprint: one click deploy of QuizBlitz on Render's free plan.
+# Render Blueprint for the backend (see docs/DEPLOIEMENT_VERCEL.md).
+# A persistent disk is required to keep settings, blind tests, media and live games
+# across restarts and deploys: disks are only available on paid instances.
+# The free plan still works for a demo, but its data is wiped at every restart.
 services:
   - type: web
-    name: quizblitz
+    name: blindtest-backend
     runtime: node
-    plan: free
+    plan: starter
     buildCommand: echo "nothing to build"
     startCommand: npm start
-    healthCheckPath: /
+    healthCheckPath: /api/health
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 22.14.0
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data
+      - key: TRUST_PROXY
+        value: "true"
       - key: COOKIE_SECURE
         value: "true"
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
       - key: REPORTS_KEY
         generateValue: true

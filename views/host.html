@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Host · QuizBlitz</title>
+  <!--BRAND_HEAD:Animation-->
   <link rel="stylesheet" href="/style.css">
   <style>
     .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
@@ -91,6 +91,27 @@
       .confetti { display: none; }
     }
 
+    .lobby-brand { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; margin: 8px 0 4px; }
+    .lobby-brand .logo { margin: 0; font-size: clamp(30px, 5vw, 56px); }
+    .lobby-brand .tagline { margin: 0; }
+    .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .qr-text { font-weight: 900; font-size: 20px; text-align: center; }
+    .waiting { text-align: center; font-weight: 900; font-size: clamp(18px, 2.4vw, 28px); }
+    /* host control bar (game phases) */
+    .ctrl { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: rgba(10, 6, 24, .88); color: #fff; font-size: 14px; backdrop-filter: blur(6px); }
+    .ctrl button { padding: 7px 11px; font-size: 14px; box-shadow: none; }
+    .ctrl .sep { flex: 1; }
+    .ctrl input[type=range] { width: 110px; padding: 0; accent-color: var(--highlight); }
+    .ctrl .err { color: #ffb4b4; font-weight: 800; }
+    body.has-ctrl .game-screen { padding-bottom: var(--ctrl-h, 56px); }
+    body.has-ctrl .wrap, body.has-ctrl .end-screen, body.has-ctrl #s-ready { padding-bottom: calc(var(--ctrl-h, 56px) + 14px); }
+    .ctrl.collapsed > :not(.ctrl-toggle) { display: none; }
+    .audio-bar { height: 10px; border-radius: 99px; background: rgba(255,255,255,.15); overflow: hidden; flex: none; }
+    .audio-bar > div { height: 100%; width: 0; background: var(--accent); }
+    .round-label { text-align: center; font-weight: 900; color: var(--on-bg-muted); font-size: clamp(16px, 2vw, 24px); margin: 0; }
+    .blind-visual { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .blind-visual .note { font-size: clamp(60px, 9vw, 120px); line-height: 1; animation: bob 2.4s ease-in-out infinite; }
+    .sound-gate { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(0,0,0,.6); }
     @media (max-width: 760px) {
       .lobby { grid-template-columns: 1fr; justify-items: center; text-align: center; }
       .qmid { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
@@ -103,62 +124,70 @@
   <!-- 1. Quiz editor -->
   <section id="s-edit" data-screen class="wrap editor">
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
-      <h1 class="logo" style="margin:0;font-size:36px">Quiz<span>Blitz</span></h1>
+      <h1 class="logo" style="margin:0;font-size:36px">{{logo}}</h1>
       <div class="row" id="account-bar"></div>
     </div>
     <div class="row" style="margin-bottom:12px">
-      <button class="ghost small" id="btn-new" type="button">+ New quiz</button>
-      <button class="ghost small" id="btn-sample" type="button">Load sample quiz</button>
-      <button class="ghost small" id="btn-import" type="button">Import JSON</button>
-      <button class="ghost small" id="btn-export" type="button">Export JSON</button>
-      <a class="btn ghost small" href="/library">📚 My library</a>
-      <a class="btn ghost small" href="/reports">📊 Reports</a>
+      <button class="ghost small" id="btn-new" type="button">+ Nouveau quiz</button>
+      <button class="ghost small" id="btn-sample" type="button">Charger l’exemple</button>
+      <button class="ghost small" id="btn-import" type="button">Importer JSON</button>
+      <button class="ghost small" id="btn-export" type="button">Exporter JSON</button>
+      <a class="btn ghost small" href="/library">📚 Ma bibliothèque</a>
+      <a class="btn ghost small" href="/reports">📊 Rapports</a>
+      <a class="btn ghost small" href="/admin">🎵 Blind tests (admin)</a>
     </div>
     <div class="card stack" style="margin-bottom:12px">
       <div class="row">
-        <input id="quiz-title" placeholder="Quiz title" aria-label="Quiz title" style="text-align:left;flex:1;width:auto">
-        <button class="accent small" id="btn-save" type="button">💾 Save to library</button>
+        <input id="quiz-title" placeholder="Titre du quiz" aria-label="Titre du quiz" style="text-align:left;flex:1;width:auto">
+        <button class="accent small" id="btn-save" type="button">💾 Enregistrer</button>
       </div>
       <p class="sub" id="save-status" role="status" style="margin:0"></p>
     </div>
     <div id="questions" class="stack"></div>
     <div class="row" style="margin:16px 0 12px">
-      <button class="ghost" id="btn-add" type="button">+ Add question</button>
+      <button class="ghost" id="btn-add" type="button">+ Ajouter une question</button>
     </div>
     <details class="card options" id="game-options">
-      <summary>⚙️ Game options</summary>
+      <summary>⚙️ Options de partie</summary>
       <div class="opt-grid" id="option-list"></div>
     </details>
     <div class="row" style="margin:16px 0 40px">
       <span class="grow"></span>
       <p class="error" id="edit-err" role="alert" style="color:#ffb4b4"></p>
-      <button class="accent" id="btn-host" type="button">Host live game ▶</button>
+      <button class="accent" id="btn-host" type="button">Lancer la partie ▶</button>
     </div>
     <input type="file" id="import-file" accept="application/json" class="hidden">
   </section>
 
   <!-- 2. Lobby -->
   <section id="s-lobby" data-screen class="wrap hidden">
-    <div class="lobby" style="margin-top:20px">
+    <div class="lobby-brand">
+      <h1 class="logo">{{logo}}</h1>
+      <p class="tagline">{{tagline}}</p>
+    </div>
+    <div class="lobby" style="margin-top:12px">
       <div class="join-box stack">
-        <div>Join at <span class="join-url" id="join-url"></span></div>
-        <div>or scan the QR code with your phone camera</div>
-        <div>Game PIN:</div>
+        <h2 style="margin:0" id="lobby-title"></h2>
+        <div>Rejoignez sur <span class="join-url" id="join-url"></span></div>
+        <div>ou scannez le QR code avec l’appareil photo de votre téléphone</div>
+        <div>Code PIN :</div>
         <p class="pin" id="lobby-pin"></p>
-        <select id="url-choice" class="hidden" aria-label="Network address to share" style="text-align:left;font-size:14px"></select>
+        <select id="url-choice" class="hidden" aria-label="Adresse réseau à partager" style="text-align:left;font-size:14px"></select>
       </div>
-      <div id="qr" aria-label="QR code to join the game"></div>
+      <div class="qr-wrap">
+        <div class="qr-text">{{qrCodeText}}</div>
+        <div id="qr" aria-label="QR code pour rejoindre la partie"></div>
+      </div>
     </div>
     <div class="row" style="justify-content:space-between;margin-top:24px">
       <div class="row"><div class="pill">👤 <span id="player-count">0</span></div><span id="mute-lobby"></span></div>
-      <h2 style="margin:0" id="lobby-title"></h2>
+      <p class="waiting" id="lobby-hint">En attente des joueurs…</p>
       <div class="row">
-        <button class="ghost" id="btn-lock" type="button">🔓 Lock</button>
-        <button class="accent" id="btn-start" disabled>Start</button>
+        <button class="ghost" id="btn-lock" type="button">🔓 Verrouiller</button>
+        <button class="accent" id="btn-start" disabled>Lancer ▶</button>
       </div>
     </div>
-    <p class="locked-banner hidden" id="locked-banner">🔒 Game locked: nobody new can join</p>
-    <p class="muted" id="lobby-hint" style="text-align:center">Waiting for players…</p>
+    <p class="locked-banner hidden" id="locked-banner">🔒 Partie verrouillée : personne ne peut plus rejoindre</p>
     <div class="players" id="players"></div>
   </section>
 
@@ -166,6 +195,7 @@
   <section id="s-ready" data-screen class="center hidden">
     <div class="stack" style="align-items:center">
       <p class="muted big" id="ready-num"></p>
+      <p class="round-label hidden" id="ready-round"></p>
       <h2 class="question-text pop" id="ready-text"></h2>
       <div class="timer" id="ready-timer"><span></span></div>
     </div>
@@ -174,17 +204,19 @@
   <!-- 4. Question open -->
   <section id="s-question" data-screen class="game-screen hidden">
     <div class="time-bar" aria-hidden="true"><div id="q-bar"></div></div>
+    <p class="round-label hidden" id="q-round"></p>
     <h2 class="question-text" id="q-text"></h2>
+    <div class="audio-bar hidden" id="q-audio-bar" aria-hidden="true"><div></div></div>
     <div class="qmid">
-      <div class="timer xl" id="q-timer" role="timer" aria-label="Seconds left"><span></span></div>
+      <div class="timer xl" id="q-timer" role="timer" aria-label="Secondes restantes"><span></span></div>
       <div class="media" id="q-media"></div>
-      <div class="count-box"><span class="n" id="q-answers">0</span>Answers</div>
+      <div class="count-box"><span class="n" id="q-answers">0</span>Réponses</div>
     </div>
     <div class="answers host" id="q-choices"></div>
     <div class="bottombar">
       <span id="q-num"></span>
-      <span>Game PIN: <span class="pin-tag" id="q-pin"></span> <span id="q-points" class="pin-tag hidden" style="background:var(--a2);color:var(--a2-ink)">2× points</span></span>
-      <span class="row"><span id="mute-q"></span><button class="small" id="btn-skip">Skip ⏭</button></span>
+      <span>PIN : <span class="pin-tag" id="q-pin"></span> <span id="q-points" class="pin-tag hidden" style="background:var(--a2);color:var(--a2-ink)">2× points</span></span>
+      <span class="row"><span id="mute-q"></span><button class="small" id="btn-skip">Fermer les réponses ⏭</button></span>
     </div>
   </section>
 
@@ -194,21 +226,21 @@
     <div class="qmid">
       <div></div>
       <div class="reveal-main" id="r-bars"></div>
-      <div class="count-box"><span class="n" id="r-answers">0</span>Answers</div>
+      <div class="count-box"><span class="n" id="r-answers">0</span>Réponses</div>
     </div>
     <div class="answers host" id="r-choices"></div>
     <div class="bottombar">
       <span id="r-num"></span>
-      <span>Game PIN: <span class="pin-tag" id="r-pin"></span></span>
-      <button class="accent small" id="btn-to-board">Next ▶</button>
+      <span>PIN : <span class="pin-tag" id="r-pin"></span></span>
+      <button class="accent small" id="btn-to-board">Classement ▶</button>
     </div>
   </section>
 
   <!-- 6. Scoreboard -->
   <section id="s-board" data-screen class="wrap hidden">
     <div class="row" style="justify-content:space-between">
-      <h2 class="big">Scoreboard</h2>
-      <button class="accent" id="btn-next-q">Next ▶</button>
+      <h2 class="big">Classement</h2>
+      <span class="row"><button class="ghost" id="btn-hide-board" type="button">◀ Masquer</button><button class="accent" id="btn-next-q">Suivant ▶</button></span>
     </div>
     <ol class="board" id="board"></ol>
   </section>
@@ -216,19 +248,40 @@
   <!-- 7. Podium -->
   <section id="s-end" data-screen class="end-screen hidden">
     <div class="spotlight" id="spotlight"></div>
+    <div class="lobby-brand"><span class="logo" style="font-size:28px">{{logo}}</span></div>
     <h2 class="big" id="end-title"></h2>
     <p class="drumroll" id="drumroll"></p>
     <div class="podium" id="podium"></div>
     <div class="runners" id="runners">
       <ol class="board" id="end-board"></ol>
       <div class="row" style="justify-content:center;margin:20px 0 40px">
-        <button class="ghost" id="btn-replay" type="button">↻ Replay podium</button>
-        <a class="btn accent hidden" id="btn-report" href="/reports">📊 View report</a>
-        <a class="btn ghost" href="/host">Back to editor</a>
+        <button class="ghost" id="btn-replay" type="button">↻ Rejouer le podium</button>
+        <a class="btn accent hidden" id="btn-report" href="/reports">📊 Voir le rapport</a>
+        <a class="btn ghost" id="btn-back" href="/host">Retour</a>
       </div>
     </div>
   </section>
 
+  <!-- Host control bar (shown during the game) -->
+  <div class="ctrl hidden" id="ctrl" role="toolbar" aria-label="Commandes de l’animateur">
+    <button class="ctrl-toggle ghost" id="ctrl-toggle" type="button" title="Réduire / afficher les commandes" aria-label="Réduire les commandes">☰</button>
+    <span class="status-pill" id="c-state">Lobby</span>
+    <span id="c-players" title="Joueurs connectés / inscrits">👥 0/0</span>
+    <span id="c-answers" title="Réponses reçues">✉ 0</span>
+    <span class="status-pill live" id="c-live" title="Connexion temps réel">Temps réel</span>
+    <span class="err" id="c-audio-err" role="alert"></span>
+    <span class="sep"></span>
+    <button id="c-pause" type="button">⏸ Pause</button>
+    <button id="c-restart" type="button" title="Relancer le compte à rebours et l’extrait (les réponses à ce morceau sont annulées)">↺ Relancer</button>
+    <button id="c-stop" type="button" title="Couper le son sur cet ordinateur">⏹ Son</button>
+    <button id="c-close" type="button" title="Fermer les réponses et révéler">⏭ Révéler</button>
+    <label title="Volume" class="row" style="gap:4px">🔊<input type="range" id="c-volume" min="0" max="1" step="0.05" aria-label="Volume"></label>
+    <button id="c-recover" type="button" title="Renvoie l’état à tous les écrans et relance les minuteurs. Ne supprime rien.">🛠 Débloquer</button>
+    <button id="c-end" type="button" title="Terminer la partie">■ Terminer</button>
+  </div>
+  <div class="sound-gate hidden" id="sound-gate">
+    <button class="accent" id="btn-sound-gate" type="button" style="font-size:24px;padding:20px 28px">🔊 Activer le son et reprendre</button>
+  </div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script type="module" src="/host.js"></script>
 </body>
